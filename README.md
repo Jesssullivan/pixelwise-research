@@ -5,6 +5,7 @@ ESDT-based WCAG contrast computation research implementation in Futhark targetin
 ### todos:
 - [ ] publish pixelwise.ephemera.xoxd.ai live demo
 - [ ] publish screenshots
+- [ ] update readme and docs with entrypoints and more useful info for playing with the compositor 
 - [ ] Imporove upon transparency handling and floatingUI integration
   - Current approach buffers absolute XYZ values; consider 3 dimensional scanning instead of frame buffer
 - [ ] Improve memory managment; add greedy viewport offloading
