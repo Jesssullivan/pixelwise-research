@@ -2,6 +2,15 @@
 
 ESDT-based WCAG contrast computation research implementation in Futhark targeting webGPU.   
 
+### todos:
+- [ ] publish pixelwise.ephemera.xoxd.ai live demo
+- [ ] publish screenshots
+- [ ] Imporove upon transparency handling and floatingUI integration
+  - Current approach buffers absolute XYZ values; consider 3 dimensional scanning instead of frame buffer
+- [ ] Improve memory managment; add greedy viewport offloading
+- [ ] Maybe lace up with outbot harness when continuing research
+- [ ] Add multiarch gpu demos
+
 ## The plan:
 
 ESDT computes offset vectors `(Δx, Δy)` to the nearest edge for each pixel.
