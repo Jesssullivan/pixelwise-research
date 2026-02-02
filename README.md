@@ -139,5 +139,5 @@ Jess Sullivan <jess@sulliwood.org>
 ## Whitepaper 
 
 - **[pixelwise.pdf](tex_research/pixelwise/dist/pixelwise.pdf)** - Mathematical foundations with verification status.  I originally developed this with Rust SIMD as a project to learn Rust SIMD, maybe @brightbloom could lend a hand wiht that next time I try :eyes:
-- This project recived autononous assistance with fuzzing, contraining and and PBT contraining as well as some GPU integration work preformed with in **Tinyland** with the xoxd.ai stack as a bit of a dogfooding experiment, which will which will be coming out of stealth Q3 2026.
+- This project recived autononous assistance with PBT contraining, fuzzing, verification and function composition as well as some GPU integration work preformed with in **Tinyland** with the xoxd.ai stack as a bit of a dogfooding experiment, which will which will be coming out of stealth Q3 2026.
 - xoxd.ai is hiring.  
