@@ -1,0 +1,151 @@
+// Video Capture ESDT - External Texture Input Shader
+//
+// Converts video frames from external texture to grayscale luminance
+// and computes Sobel gradients for ESDT initialization.
+//
+// This shader uses texture_external for zero-copy video frame access
+// (Chrome/Safari). Firefox requires the fallback texture_2d version.
+//
+// Pipeline position: Pass 1 (before ESDT X/Y passes)
+
+@group(0) @binding(0) var videoSampler: sampler;
+@group(0) @binding(1) var videoTexture: texture_external;
+@group(0) @binding(2) var<storage, read_write> grayscale: array<f32>;
+@group(0) @binding(3) var<storage, read_write> gradient_x: array<f32>;
+@group(0) @binding(4) var<storage, read_write> gradient_y: array<f32>;
+@group(0) @binding(5) var<uniform> params: Params;
+
+struct Params {
+    width: u32,
+    height: u32,
+    dpr: f32,
+    padding: u32,
+}
+
+// ============================================================================
+// WCAG 2.1 Color Space Functions (Exact Constants)
+// ============================================================================
+
+// sRGB linearization (WCAG 2.1 exact threshold: 0.03928, NOT 0.04045)
+fn srgb_to_linear(c: f32) -> f32 {
+    if (c <= 0.03928) {
+        return c / 12.92;
+    }
+    return pow((c + 0.055) / 1.055, 2.4);
+}
+
+// Relative luminance (WCAG 2.1 coefficients)
+fn relative_luminance(rgb: vec3<f32>) -> f32 {
+    let lin = vec3<f32>(
+        srgb_to_linear(rgb.r),
+        srgb_to_linear(rgb.g),
+        srgb_to_linear(rgb.b)
+    );
+    return 0.2126 * lin.r + 0.7152 * lin.g + 0.0722 * lin.b;
+}
+
+// ============================================================================
+// Video Sampling
+// ============================================================================
+
+// Sample video texture with boundary clamping
+// Note: texture_external requires textureSampleBaseClampToEdge
+fn sample_video(x: i32, y: i32) -> f32 {
+    let px = clamp(x, 0, i32(params.width) - 1);
+    let py = clamp(y, 0, i32(params.height) - 1);
+
+    // Compute UV coordinates (texel center)
+    let uv = vec2<f32>(
+        (f32(px) + 0.5) / f32(params.width),
+        (f32(py) + 0.5) / f32(params.height)
+    );
+
+    // Sample with BaseClampToEdge (required for external textures)
+    let color = textureSampleBaseClampToEdge(videoTexture, videoSampler, uv);
+
+    return relative_luminance(color.rgb);
+}
+
+// Sample and return inverted luminance for text detection
+// Dark text (low luminance) -> high value (foreground)
+// Light background (high luminance) -> low value (background)
+fn sample_video_inverted(x: i32, y: i32) -> f32 {
+    return 1.0 - sample_video(x, y);
+}
+
+// ============================================================================
+// Gradient Computation
+// ============================================================================
+
+// Compute Sobel gradient at pixel
+// Uses [1,2,1] kernel for smooth gradient estimation
+//
+// Sobel X kernel:        Sobel Y kernel:
+// -1  0  +1             -1  -2  -1
+// -2  0  +2              0   0   0
+// -1  0  +1             +1  +2  +1
+fn compute_sobel_gradient(x: i32, y: i32) -> vec2<f32> {
+    // Sample 3x3 neighborhood (inverted luminance for text detection)
+    let s00 = sample_video_inverted(x - 1, y - 1);
+    let s10 = sample_video_inverted(x    , y - 1);
+    let s20 = sample_video_inverted(x + 1, y - 1);
+    let s01 = sample_video_inverted(x - 1, y    );
+    // s11 = center, not needed for gradient
+    let s21 = sample_video_inverted(x + 1, y    );
+    let s02 = sample_video_inverted(x - 1, y + 1);
+    let s12 = sample_video_inverted(x    , y + 1);
+    let s22 = sample_video_inverted(x + 1, y + 1);
+
+    // Sobel X: horizontal gradient (positive = increasing right)
+    let gx = (
+        -1.0 * s00 + 1.0 * s20 +
+        -2.0 * s01 + 2.0 * s21 +
+        -1.0 * s02 + 1.0 * s22
+    );
+
+    // Sobel Y: vertical gradient (positive = increasing down)
+    let gy = (
+        -1.0 * s00 - 2.0 * s10 - 1.0 * s20 +
+         1.0 * s02 + 2.0 * s12 + 1.0 * s22
+    );
+
+    // Normalize by kernel sum (8.0 for Sobel)
+    return vec2<f32>(gx, gy) / 8.0;
+}
+
+// Normalize gradient to unit vector
+fn normalize_gradient(grad: vec2<f32>) -> vec2<f32> {
+    let mag = length(grad);
+    if (mag < 0.001) {
+        return vec2<f32>(0.0, 0.0);
+    }
+    return grad / mag;
+}
+
+// ============================================================================
+// Main Compute Shader
+// ============================================================================
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let x = i32(global_id.x);
+    let y = i32(global_id.y);
+
+    // Bounds check
+    if (global_id.x >= params.width || global_id.y >= params.height) {
+        return;
+    }
+
+    let idx = global_id.y * params.width + global_id.x;
+
+    // Sample center pixel (inverted for text detection)
+    let luminance = sample_video_inverted(x, y);
+    grayscale[idx] = luminance;
+
+    // Compute and store gradients
+    let grad = compute_sobel_gradient(x, y);
+    let norm_grad = normalize_gradient(grad);
+
+    gradient_x[idx] = norm_grad.x;
+    gradient_y[idx] = norm_grad.y;
+}

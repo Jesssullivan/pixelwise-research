@@ -1,0 +1,251 @@
+"""Test targets for Pixelwise with sharding optimization."""
+
+load("@aspect_rules_js//js:defs.bzl", "js_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# ============================================================================
+# Test Runner Scripts
+# ============================================================================
+
+# Vitest runner script
+genrule(
+    name = "vitest_runner",
+    srcs = [],
+    outs = ["run-vitest.js"],
+    cmd = """
+cat > $@ << 'EOF'
+import { execSync } from 'child_process';
+const args = process.argv.slice(2).join(' ');
+execSync(`pnpm vitest run ${args}`, { stdio: 'inherit', cwd: process.env.BUILD_WORKSPACE_DIRECTORY });
+EOF
+""",
+)
+
+# Playwright runner script
+genrule(
+    name = "playwright_runner",
+    srcs = [],
+    outs = ["run-playwright.js"],
+    cmd = """
+cat > $@ << 'EOF'
+import { execSync } from 'child_process';
+const args = process.argv.slice(2).join(' ');
+execSync(`pnpm playwright test ${args}`, { stdio: 'inherit', cwd: process.env.BUILD_WORKSPACE_DIRECTORY });
+EOF
+""",
+)
+
+# ============================================================================
+# Unit Tests (Vitest)
+# ============================================================================
+
+# Main unit test target with sharding
+js_test(
+    name = "vitest",
+    data = [
+        "//:config",
+        "//:node_modules",
+        "//src/lib:sources",
+        "//futhark:all",
+    ] + glob([
+        "**/*.test.ts",
+        "**/*.ts",
+    ]),
+    entry_point = ":run-vitest.js",
+    # Shard tests for parallelism
+    shard_count = 4,
+    tags = ["unit"],
+)
+
+# Property-based tests (longer timeout)
+js_test(
+    name = "vitest_pbt",
+    args = ["--testPathPattern=invariants"],
+    data = [
+        "//:config",
+        "//:node_modules",
+        "//src/lib:sources",
+    ] + glob([
+        "**/*invariants*.test.ts",
+        "arbitraries.ts",
+        "helpers.ts",
+        "setup.ts",
+    ]),
+    entry_point = ":run-vitest.js",
+    tags = ["pbt"],
+    timeout = "long",
+)
+
+# Theorem verification tests
+js_test(
+    name = "vitest_theorems",
+    args = ["--testPathPattern=theorem-verification"],
+    data = [
+        "//:config",
+        "//:node_modules",
+        "//src/lib:sources",
+    ] + glob([
+        "theorem-verification/**/*.test.ts",
+        "helpers.ts",
+        "setup.ts",
+    ]),
+    entry_point = ":run-vitest.js",
+    tags = ["theorems"],
+    timeout = "moderate",
+)
+
+# WGSL shader unit tests (algorithm verification)
+js_test(
+    name = "vitest_wgsl",
+    args = ["--testPathPattern=wgsl-shader-unit"],
+    data = [
+        "//:config",
+        "//:node_modules",
+        "//src/lib:sources",
+        "wgsl-shader-unit.test.ts",
+        "helpers.ts",
+        "setup.ts",
+    ],
+    entry_point = ":run-vitest.js",
+    tags = [
+        "shaders",
+        "unit",
+    ],
+    timeout = "short",
+)
+
+# ============================================================================
+# End-to-End Tests (Playwright)
+# ============================================================================
+
+# Main E2E tests - sharded by browser
+js_test(
+    name = "playwright",
+    data = [
+        "//:config",
+        "//:node_modules",
+        "//src:sources",
+    ] + glob(["**/*.spec.ts"]),
+    entry_point = ":run-playwright.js",
+    # Shard across browsers: Chromium, Firefox, WebKit
+    shard_count = 3,
+    tags = [
+        "e2e",
+        "requires-network",
+    ],
+    timeout = "eternal",
+)
+
+# Accessibility-specific E2E tests
+js_test(
+    name = "playwright_a11y",
+    args = ["--config=playwright.accessibility.config.ts"],
+    data = [
+        "//:config",
+        "//:node_modules",
+        "//src:sources",
+    ] + glob(["**/*.spec.ts"]),
+    entry_point = ":run-playwright.js",
+    tags = [
+        "a11y",
+        "e2e",
+    ],
+    timeout = "long",
+)
+
+# Hydration tests
+js_test(
+    name = "playwright_hydration",
+    args = ["--config=playwright.a11y-hydration.config.ts"],
+    data = [
+        "//:config",
+        "//:node_modules",
+        "//src:sources",
+        "hydration.spec.ts",
+    ],
+    entry_point = ":run-playwright.js",
+    tags = [
+        "e2e",
+        "hydration",
+    ],
+    timeout = "moderate",
+)
+
+# ============================================================================
+# Test Suites
+# ============================================================================
+
+# Fast tests (unit + theorems + WGSL shaders, no browser required)
+test_suite(
+    name = "fast",
+    tags = [
+        "shaders",
+        "theorems",
+        "unit",
+    ],
+    tests = [
+        ":vitest",
+        ":vitest_theorems",
+        ":vitest_wgsl",
+    ],
+)
+
+# Property-based tests only
+test_suite(
+    name = "pbt",
+    tags = ["pbt"],
+    tests = [":vitest_pbt"],
+)
+
+# Slow tests (PBT + E2E)
+test_suite(
+    name = "slow",
+    tags = [
+        "e2e",
+        "pbt",
+    ],
+    tests = [
+        ":playwright",
+        ":playwright_a11y",
+        ":vitest_pbt",
+    ],
+)
+
+# All tests
+test_suite(
+    name = "all",
+    tests = [
+        ":playwright",
+        ":playwright_a11y",
+        ":playwright_hydration",
+        ":vitest",
+        ":vitest_pbt",
+        ":vitest_theorems",
+        ":vitest_wgsl",
+    ],
+)
+
+# ============================================================================
+# File Groups
+# ============================================================================
+
+# All test source files
+filegroup(
+    name = "sources",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.json",
+    ]),
+)
+
+# Test configuration files
+filegroup(
+    name = "config",
+    srcs = [
+        "//:vitest.config.ts",
+        "//:playwright.config.ts",
+        "//:playwright.accessibility.config.ts",
+        "//:playwright.a11y-hydration.config.ts",
+    ],
+)

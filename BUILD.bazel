@@ -1,0 +1,105 @@
+"""Pixelwise root BUILD file."""
+
+load("@aspect_rules_js//js:defs.bzl", "js_library")
+load("@npm//:defs.bzl", "npm_link_all_packages")
+
+# Link all npm packages
+npm_link_all_packages(name = "node_modules")
+
+# ============================================================================
+# Source Groups
+# ============================================================================
+
+# Package.json and lock file for npm operations
+filegroup(
+    name = "package_json",
+    srcs = [
+        "package.json",
+        "pnpm-lock.yaml",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# TypeScript configuration
+filegroup(
+    name = "ts_config",
+    srcs = ["tsconfig.json"],
+    visibility = ["//visibility:public"],
+)
+
+# Vite and SvelteKit configuration
+filegroup(
+    name = "vite_config",
+    srcs = [
+        "svelte.config.js",
+        "tailwind.config.ts",
+        "vite.config.ts",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# All configuration files
+filegroup(
+    name = "config",
+    srcs = [
+        ":package_json",
+        ":ts_config",
+        ":vite_config",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# ============================================================================
+# Development Server Target
+# ============================================================================
+
+# Run development server
+# Usage: bazel run //:dev
+sh_binary(
+    name = "dev",
+    srcs = ["scripts/bazel-dev.sh"],
+    data = [
+        ":config",
+        ":node_modules",
+        "//src:sources",
+        "//futhark:all",
+    ],
+)
+
+# ============================================================================
+# Aliases for Common Targets
+# ============================================================================
+
+# Build Futhark WASM modules (primary compute backend)
+alias(
+    name = "futhark",
+    actual = "//futhark:all",
+)
+
+# Run all tests
+alias(
+    name = "test",
+    actual = "//tests:all",
+)
+
+# ============================================================================
+# Platform Definitions
+# ============================================================================
+
+platform(
+    name = "wasm32",
+    constraint_values = [
+        "@platforms//cpu:wasm32",
+        "@platforms//os:none",
+    ],
+)
+
+# ============================================================================
+# Bazelignore
+# ============================================================================
+
+# Export .bazelignore for npm_translate_lock verification
+exports_files([
+    ".bazelignore",
+    "pnpm-lock.yaml",
+])

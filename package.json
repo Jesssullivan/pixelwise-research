@@ -1,0 +1,75 @@
+{
+  "name": "pixelwise",
+  "version": "0.1.0",
+  "description": "Experimental WebGPU + WASM SIMD zero-copy compositor",
+  "author": {
+    "name": "Jess Sullivan",
+    "email": "jess@sulliwood.org"
+  },
+  "license": "LGPL-3.0-or-later",
+  "keywords": [
+    "webgpu",
+    "wasm",
+    "simd",
+    "accessibility",
+    "wcag",
+    "svelte",
+    "sveltekit"
+  ],
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "scripts": {
+    "dev": "vite dev --host 0.0.0.0 --port ${PORT:-5175}",
+    "dev:container": "vite dev --host 0.0.0.0 --port ${PORT:-5175}",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:futhark": "make -C futhark",
+    "build:futhark:clean": "make -C futhark clean && make -C futhark",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:pixelwise": "vitest run tests/pixelwise/",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "@sveltejs/adapter-auto": "^7.0.0",
+    "@sveltejs/kit": "^2.49.2",
+    "@sveltejs/vite-plugin-svelte": "^7.0.0-next.0",
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/node": "^24.6.0",
+    "@vitest/coverage-v8": "^4.0.16",
+    "@webgpu/types": "^0.1.68",
+    "mdsvex": "^0.12.6",
+    "svelte": "^5.46.0",
+    "svelte-check": "^4.3.5",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0-beta.11",
+    "vite-plugin-wasm": "^3.3.0",
+    "vitest": "^4.0.16"
+  },
+  "type": "module",
+  "dependencies": {
+    "@fast-check/vitest": "^0.2.4",
+    "@iconify/svelte": "^5.2.1",
+    "@napi-rs/canvas": "^0.1.74",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/sdk-trace-web": "^1.30.1",
+    "@opentelemetry/semantic-conventions": "^1.37.0",
+    "@shikijs/transformers": "^3.21.0",
+    "@skeletonlabs/skeleton": "^4.9.0",
+    "@tailwindcss/typography": "^0.5.19",
+    "fast-check": "^4.5.3",
+    "jsdom": "^27.4.0",
+    "marked": "^17.0.1",
+    "rehype-autolink-headings": "^7.1.0",
+    "rehype-slug": "^6.0.0",
+    "runed": "0.37.1",
+    "shiki": "^3.21.0",
+    "svelte": "^5.46.0"
+  },
+  "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad"
+}

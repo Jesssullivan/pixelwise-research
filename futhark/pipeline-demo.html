@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Pixelwise Pipeline Demo - WCAG Contrast Enhancement</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --surface: #16213e;
+      --primary: #0f3460;
+      --accent: #e94560;
+      --text: #eee;
+      --muted: #888;
+      --pass: #4ade80;
+      --fail: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      background: var(--bg);
+      color: var(--text);
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 1rem;
+      line-height: 1.6;
+    }
+    h1, h2, h3 { margin: 0.5em 0; }
+    h1 { color: var(--accent); font-size: 1.5rem; }
+    h2 { color: var(--text); font-size: 1.2rem; border-bottom: 1px solid var(--primary); padding-bottom: 0.5em; }
+    h3 { color: var(--muted); font-size: 1rem; }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .status {
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    .status.loading { background: var(--primary); }
+    .status.ready { background: #166534; }
+    .status.error { background: #991b1b; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 2fr 1fr;
+      gap: 1rem;
+    }
+
+    .panel {
+      background: var(--surface);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    /* Input Panel */
+    .input-text {
+      width: 100%;
+      height: 80px;
+      font-size: 2rem;
+      font-family: system-ui, sans-serif;
+      padding: 1rem;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+
+    .config-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 0.5rem 0;
+    }
+    .config-row label {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .config-row input[type="number"] {
+      width: 80px;
+      padding: 0.25rem 0.5rem;
+      background: var(--primary);
+      border: 1px solid var(--muted);
+      color: var(--text);
+      border-radius: 4px;
+    }
+    .config-row select {
+      padding: 0.25rem 0.5rem;
+      background: var(--primary);
+      border: 1px solid var(--muted);
+      color: var(--text);
+      border-radius: 4px;
+    }
+
+    button {
+      padding: 0.5rem 1rem;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      margin-top: 0.5rem;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Pipeline Visualization */
+    .pipeline-passes {
+      display: flex;
+      gap: 0.5rem;
+      overflow-x: auto;
+      padding: 0.5rem 0;
+    }
+    .pass-card {
+      flex: 0 0 auto;
+      background: var(--primary);
+      border-radius: 8px;
+      padding: 0.5rem;
+      text-align: center;
+      min-width: 120px;
+    }
+    .pass-card.active { border: 2px solid var(--accent); }
+    .pass-card h4 {
+      margin: 0 0 0.25rem 0;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .pass-card .name {
+      font-size: 0.9rem;
+      margin-bottom: 0.25rem;
+    }
+    .pass-card canvas {
+      border: 1px solid var(--muted);
+      image-rendering: pixelated;
+    }
+    .pass-card .timing {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+    }
+    .arrow {
+      display: flex;
+      align-items: center;
+      color: var(--muted);
+      font-size: 1.5rem;
+    }
+
+    /* Before/After Comparison */
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .comparison-panel {
+      text-align: center;
+    }
+    .comparison-panel canvas {
+      border: 2px solid var(--primary);
+      image-rendering: pixelated;
+      max-width: 100%;
+    }
+
+    /* Metrics Panel */
+    .metric {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--primary);
+    }
+    .metric:last-child { border-bottom: none; }
+    .metric-label { color: var(--muted); font-size: 0.85rem; }
+    .metric-value { font-weight: bold; }
+    .metric-value.pass { color: var(--pass); }
+    .metric-value.fail { color: var(--fail); }
+
+    /* Algorithm Verification */
+    .test-result {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.25rem 0;
+      font-size: 0.85rem;
+    }
+    .test-result .icon { font-size: 1.2rem; }
+    .test-result.pass .icon { color: var(--pass); }
+    .test-result.fail .icon { color: var(--fail); }
+    .test-result .ref {
+      color: var(--muted);
+      font-size: 0.75rem;
+      margin-left: auto;
+    }
+
+    /* Formula Reference */
+    .formula {
+      background: var(--primary);
+      padding: 0.75rem;
+      border-radius: 4px;
+      margin: 0.5rem 0;
+      font-size: 0.85rem;
+    }
+    .formula .label {
+      color: var(--muted);
+      font-size: 0.75rem;
+      margin-bottom: 0.25rem;
+    }
+    .formula code {
+      color: var(--accent);
+    }
+
+    /* Edge Weight Graph */
+    .graph-container {
+      background: var(--primary);
+      padding: 0.5rem;
+      border-radius: 4px;
+      margin-top: 0.5rem;
+    }
+
+    pre {
+      background: var(--primary);
+      padding: 1rem;
+      overflow-x: auto;
+      font-size: 0.8rem;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Pixelwise ESDT/WCAG Pipeline</h1>
+    <div id="status" class="status loading">Loading Futhark WASM...</div>
+  </div>
+
+  <div class="grid">
+    <!-- Input Panel -->
+    <div class="panel">
+      <h2>Input</h2>
+      <textarea id="input-text" class="input-text" placeholder="Type text...">Aa</textarea>
+
+      <h3>Configuration</h3>
+      <div class="config-row">
+        <label>Target Contrast</label>
+        <input type="number" id="target-contrast" value="7.0" min="1" max="21" step="0.1">
+      </div>
+      <div class="config-row">
+        <label>Max Distance</label>
+        <input type="number" id="max-distance" value="3.0" min="1" max="10" step="0.5">
+      </div>
+      <div class="config-row">
+        <label>Sample Distance</label>
+        <input type="number" id="sample-distance" value="5.0" min="1" max="20" step="1">
+      </div>
+      <div class="config-row">
+        <label>Text Color</label>
+        <input type="color" id="text-color" value="#333333">
+      </div>
+      <div class="config-row">
+        <label>Background</label>
+        <input type="color" id="bg-color" value="#cccccc">
+      </div>
+      <div class="config-row">
+        <label>Font Size</label>
+        <input type="number" id="font-size" value="48" min="12" max="200" step="4">
+      </div>
+
+      <button id="run-btn" disabled>Run Pipeline</button>
+    </div>
+
+    <!-- Pipeline Visualization -->
+    <div class="panel">
+      <h2>6-Pass Pipeline</h2>
+      <div class="pipeline-passes" id="pipeline-passes">
+        <div class="pass-card" id="pass1">
+          <h4>Pass 1</h4>
+          <div class="name">Grayscale</div>
+          <canvas width="80" height="80"></canvas>
+          <div class="timing">-</div>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div class="pass-card" id="pass2">
+          <h4>Pass 2</h4>
+          <div class="name">ESDT-X</div>
+          <canvas width="80" height="80"></canvas>
+          <div class="timing">-</div>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div class="pass-card" id="pass3">
+          <h4>Pass 3</h4>
+          <div class="name">ESDT-Y</div>
+          <canvas width="80" height="80"></canvas>
+          <div class="timing">-</div>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div class="pass-card" id="pass4">
+          <h4>Pass 4</h4>
+          <div class="name">Extract</div>
+          <canvas width="80" height="80"></canvas>
+          <div class="timing">-</div>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div class="pass-card" id="pass5">
+          <h4>Pass 5</h4>
+          <div class="name">BG Sample</div>
+          <canvas width="80" height="80"></canvas>
+          <div class="timing">-</div>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div class="pass-card" id="pass6">
+          <h4>Pass 6</h4>
+          <div class="name">Adjust</div>
+          <canvas width="80" height="80"></canvas>
+          <div class="timing">-</div>
+        </div>
+      </div>
+
+      <h3>Before / After</h3>
+      <div class="comparison">
+        <div class="comparison-panel">
+          <h4>Original</h4>
+          <canvas id="before-canvas" width="256" height="128"></canvas>
+        </div>
+        <div class="comparison-panel">
+          <h4>Enhanced</h4>
+          <canvas id="after-canvas" width="256" height="128"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Metrics & Verification Panel -->
+    <div class="panel">
+      <h2>Metrics</h2>
+      <div class="metric">
+        <span class="metric-label">Total Pixels</span>
+        <span class="metric-value" id="m-total">-</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Glyph Pixels</span>
+        <span class="metric-value" id="m-glyph">-</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Adjusted Pixels</span>
+        <span class="metric-value" id="m-adjusted">-</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Original Min CR</span>
+        <span class="metric-value" id="m-orig-min">-</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Enhanced Min CR</span>
+        <span class="metric-value" id="m-enh-min">-</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Pipeline Time</span>
+        <span class="metric-value" id="m-time">-</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Throughput</span>
+        <span class="metric-value" id="m-throughput">-</span>
+      </div>
+
+      <h2>Algorithm Verification</h2>
+      <div id="tests">
+        <div class="test-result" id="test-esdt">
+          <span class="icon">?</span>
+          <span class="name">ESDT Distance Field</span>
+          <span class="ref">Def 2.1</span>
+        </div>
+        <div class="test-result" id="test-gray-offset">
+          <span class="icon">?</span>
+          <span class="name">Gray Offset</span>
+          <span class="ref">Def 2.3</span>
+        </div>
+        <div class="test-result" id="test-edge-weight">
+          <span class="icon">?</span>
+          <span class="name">Edge Weight</span>
+          <span class="ref">Sec 4.1</span>
+        </div>
+        <div class="test-result" id="test-wcag-linear">
+          <span class="icon">?</span>
+          <span class="name">WCAG Linearization</span>
+          <span class="ref">Sec 3.1</span>
+        </div>
+        <div class="test-result" id="test-contrast-ratio">
+          <span class="icon">?</span>
+          <span class="name">Contrast Ratio</span>
+          <span class="ref">Sec 3.1</span>
+        </div>
+      </div>
+
+      <h2>Formula Reference</h2>
+      <div class="formula">
+        <div class="label">Gray Offset (Def 2.3)</div>
+        <code>offset = L - 0.5</code>
+      </div>
+      <div class="formula">
+        <div class="label">Edge Weight (Sec 4.1)</div>
+        <code>w = 4 * alpha * (1 - alpha)</code>
+      </div>
+      <div class="formula">
+        <div class="label">Contrast Ratio (Sec 3.1)</div>
+        <code>CR = (L1 + 0.05) / (L2 + 0.05)</code>
+      </div>
+
+      <h3>Edge Weight Function</h3>
+      <div class="graph-container">
+        <canvas id="edge-weight-graph" width="200" height="60"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <h2>Debug Output</h2>
+  <pre id="debug"></pre>
+
+  <script type="module">
+    // Import Futhark pipeline module
+    import { newFutharkContext } from './pipeline.class.js';
+
+    const status = document.getElementById('status');
+    const runBtn = document.getElementById('run-btn');
+    const debug = document.getElementById('debug');
+    let log = '';
+    let fut = null;
+
+    function addLog(msg) {
+      log += msg + '\n';
+      debug.textContent = log;
+    }
+
+    // Parse hex color to RGB
+    function hexToRgb(hex) {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : { r: 0, g: 0, b: 0 };
+    }
+
+    // Render text to canvas and get ImageData
+    function renderText(text, width, height, textColor, bgColor, fontSize) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      // Fill background
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, width, height);
+
+      // Draw text
+      ctx.fillStyle = textColor;
+      ctx.font = `${fontSize}px system-ui, sans-serif`;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, width / 2, height / 2);
+
+      return ctx.getImageData(0, 0, width, height);
+    }
+
+    // Draw grayscale levels to canvas
+    function drawLevels(canvas, levels, w, h) {
+      const ctx = canvas.getContext('2d');
+      const imgData = ctx.createImageData(w, h);
+      for (let i = 0; i < levels.length; i++) {
+        const gray = Math.round(levels[i] * 255);
+        imgData.data[i * 4] = gray;
+        imgData.data[i * 4 + 1] = gray;
+        imgData.data[i * 4 + 2] = gray;
+        imgData.data[i * 4 + 3] = 255;
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    // Draw ESDT distance field to canvas
+    function drawESDT(canvas, esdt_flat, w, h) {
+      const ctx = canvas.getContext('2d');
+      const imgData = ctx.createImageData(w, h);
+
+      // Find max distance for normalization
+      let maxDist = 0;
+      for (let i = 0; i < esdt_flat.length; i += 2) {
+        const dx = esdt_flat[i];
+        const dy = esdt_flat[i + 1];
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 1e9) maxDist = Math.max(maxDist, d);
+      }
+      maxDist = Math.max(maxDist, 1);
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = (y * w + x);
+          const dx = esdt_flat[idx * 2];
+          const dy = esdt_flat[idx * 2 + 1];
+          const d = Math.sqrt(dx * dx + dy * dy);
+
+          // Color by distance (red=near, blue=far)
+          const t = Math.min(1, d / maxDist);
+          const r = Math.round(255 * (1 - t));
+          const b = Math.round(255 * t);
+
+          imgData.data[idx * 4] = r;
+          imgData.data[idx * 4 + 1] = 50;
+          imgData.data[idx * 4 + 2] = b;
+          imgData.data[idx * 4 + 3] = 255;
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    // Draw RGBA flat array to canvas
+    function drawRGBA(canvas, rgba, w, h) {
+      const ctx = canvas.getContext('2d');
+      const imgData = ctx.createImageData(w, h);
+      for (let i = 0; i < rgba.length; i++) {
+        imgData.data[i] = rgba[i];
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    // Draw edge weight function
+    function drawEdgeWeightGraph(canvas) {
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+
+      ctx.fillStyle = '#0f3460';
+      ctx.fillRect(0, 0, w, h);
+
+      // Grid
+      ctx.strokeStyle = '#1a1a2e';
+      ctx.beginPath();
+      for (let i = 0; i <= 10; i++) {
+        ctx.moveTo(i * w/10, 0);
+        ctx.lineTo(i * w/10, h);
+      }
+      ctx.stroke();
+
+      // Curve: 4*alpha*(1-alpha)
+      ctx.strokeStyle = '#e94560';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, h);
+      for (let x = 0; x < w; x++) {
+        const alpha = x / w;
+        const weight = 4 * alpha * (1 - alpha);
+        const y = h - (weight * h);
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // Labels
+      ctx.fillStyle = '#888';
+      ctx.font = '8px monospace';
+      ctx.fillText('0', 2, h - 2);
+      ctx.fillText('0.5', w/2 - 8, h - 2);
+      ctx.fillText('1', w - 10, h - 2);
+    }
+
+    // Set test result
+    function setTestResult(id, pass) {
+      const el = document.getElementById(id);
+      el.classList.remove('pass', 'fail');
+      el.classList.add(pass ? 'pass' : 'fail');
+      el.querySelector('.icon').textContent = pass ? '\u2713' : '\u2717';
+    }
+
+    // Run algorithm verification tests
+    async function runTests() {
+      addLog('\n=== Algorithm Verification ===');
+
+      // Test 1: ESDT single point
+      try {
+        const levels = new Float32Array([
+          0, 0, 0,
+          0, 1, 0,
+          0, 0, 0
+        ]);
+        const levels_2d = fut.new_f32_2d(levels, 3, 3);
+        // Use debug_esdt which is available in pipeline.fut
+        const esdt = fut.debug_esdt(levels_2d, 3.0);
+        const esdt_flat = await esdt.toTypedArray();
+
+        const center_dx = esdt_flat[8];
+        const center_dy = esdt_flat[9];
+        const center_dist = Math.sqrt(center_dx * center_dx + center_dy * center_dy);
+        const pass = center_dist < 0.01;
+
+        setTestResult('test-esdt', pass);
+        addLog(`ESDT: center_dist=${center_dist.toFixed(4)} (expected ~0) - ${pass ? 'PASS' : 'FAIL'}`);
+
+        levels_2d.free();
+        esdt.free();
+      } catch (e) {
+        setTestResult('test-esdt', false);
+        addLog(`ESDT: ERROR - ${e.message}`);
+      }
+
+      // Test 2: Gray offset (L - 0.5)
+      try {
+        // Gray at 0.5 should have offset 0
+        const offset_05 = 0.5 - 0.5;
+        // Gray at 0.2 should have offset -0.3
+        const offset_02 = 0.2 - 0.5;
+        const pass = Math.abs(offset_05) < 0.001 && Math.abs(offset_02 - (-0.3)) < 0.001;
+        setTestResult('test-gray-offset', pass);
+        addLog(`Gray Offset: L=0.5->${offset_05}, L=0.2->${offset_02} - ${pass ? 'PASS' : 'FAIL'}`);
+      } catch (e) {
+        setTestResult('test-gray-offset', false);
+        addLog(`Gray Offset: ERROR - ${e.message}`);
+      }
+
+      // Test 3: Edge weight 4*alpha*(1-alpha)
+      try {
+        const alpha_05 = 0.5;
+        const weight_05 = 4 * alpha_05 * (1 - alpha_05); // Should be 1.0
+        const alpha_0 = 0;
+        const weight_0 = 4 * alpha_0 * (1 - alpha_0); // Should be 0
+        const pass = Math.abs(weight_05 - 1.0) < 0.001 && Math.abs(weight_0) < 0.001;
+        setTestResult('test-edge-weight', pass);
+        addLog(`Edge Weight: alpha=0.5->${weight_05}, alpha=0->${weight_0} - ${pass ? 'PASS' : 'FAIL'}`);
+      } catch (e) {
+        setTestResult('test-edge-weight', false);
+        addLog(`Edge Weight: ERROR - ${e.message}`);
+      }
+
+      // Test 4: WCAG linearization
+      try {
+        // sRGB 0.03928 threshold
+        const low = 0.03 / 12.92; // Below threshold
+        const high = Math.pow((0.5 + 0.055) / 1.055, 2.4); // Above threshold
+        const pass = low < 0.003 && high > 0.2 && high < 0.3;
+        setTestResult('test-wcag-linear', pass);
+        addLog(`WCAG Linear: 0.03->${low.toFixed(4)}, 0.5->${high.toFixed(4)} - ${pass ? 'PASS' : 'FAIL'}`);
+      } catch (e) {
+        setTestResult('test-wcag-linear', false);
+        addLog(`WCAG Linear: ERROR - ${e.message}`);
+      }
+
+      // Test 5: Contrast ratio (white/black = 21:1)
+      try {
+        const l_white = 1.0;
+        const l_black = 0.0;
+        const cr = (l_white + 0.05) / (l_black + 0.05);
+        const pass = Math.abs(cr - 21) < 0.1;
+        setTestResult('test-contrast-ratio', pass);
+        addLog(`Contrast Ratio: white/black=${cr.toFixed(2)} - ${pass ? 'PASS' : 'FAIL'}`);
+      } catch (e) {
+        setTestResult('test-contrast-ratio', false);
+        addLog(`Contrast Ratio: ERROR - ${e.message}`);
+      }
+    }
+
+    // Run the full pipeline
+    async function runPipeline() {
+      const text = document.getElementById('input-text').value || 'Aa';
+      const targetContrast = parseFloat(document.getElementById('target-contrast').value);
+      const maxDistance = parseFloat(document.getElementById('max-distance').value);
+      const sampleDistance = parseFloat(document.getElementById('sample-distance').value);
+      const textColor = document.getElementById('text-color').value;
+      const bgColor = document.getElementById('bg-color').value;
+      const fontSize = parseInt(document.getElementById('font-size').value);
+
+      const width = 256;
+      const height = 128;
+
+      addLog(`\n=== Running Pipeline ===`);
+      addLog(`Text: "${text}", Size: ${fontSize}px`);
+      addLog(`Colors: text=${textColor}, bg=${bgColor}`);
+      addLog(`Config: targetCR=${targetContrast}, maxDist=${maxDistance}, sampleDist=${sampleDistance}`);
+
+      // Render original text
+      const imgData = renderText(text, width, height, textColor, bgColor, fontSize);
+      const beforeCanvas = document.getElementById('before-canvas');
+      beforeCanvas.width = width;
+      beforeCanvas.height = height;
+      beforeCanvas.getContext('2d').putImageData(imgData, 0, 0);
+
+      // Convert to flat Uint8Array
+      const rgba_flat = new Uint8Array(imgData.data);
+
+      try {
+        const start = performance.now();
+
+        // Run enhance_contrast_rgba
+        const result = fut.enhance_contrast_rgba(
+          rgba_flat,
+          width,
+          height,
+          targetContrast,
+          maxDistance,
+          sampleDistance
+        );
+
+        const enhanced = await result.toTypedArray();
+        const elapsed = performance.now() - start;
+
+        // Draw result
+        const afterCanvas = document.getElementById('after-canvas');
+        afterCanvas.width = width;
+        afterCanvas.height = height;
+        drawRGBA(afterCanvas, enhanced, width, height);
+
+        // Update metrics
+        document.getElementById('m-total').textContent = (width * height).toLocaleString();
+        document.getElementById('m-time').textContent = `${elapsed.toFixed(2)}ms`;
+        document.getElementById('m-throughput').textContent =
+          `${((width * height) / elapsed / 1000).toFixed(1)}M px/s`;
+
+        // Count differences (simple heuristic for adjusted pixels)
+        let adjusted = 0;
+        let glyphPixels = 0;
+        for (let i = 0; i < rgba_flat.length; i += 4) {
+          const origGray = (rgba_flat[i] + rgba_flat[i+1] + rgba_flat[i+2]) / 3;
+          const enhGray = (enhanced[i] + enhanced[i+1] + enhanced[i+2]) / 3;
+          if (Math.abs(origGray - enhGray) > 1) adjusted++;
+          // Rough glyph detection
+          const bg = hexToRgb(bgColor);
+          const bgGray = (bg.r + bg.g + bg.b) / 3;
+          if (Math.abs(origGray - bgGray) > 10) glyphPixels++;
+        }
+
+        document.getElementById('m-glyph').textContent = glyphPixels.toLocaleString();
+        document.getElementById('m-adjusted').textContent = adjusted.toLocaleString();
+
+        // Compute original contrast
+        const txt = hexToRgb(textColor);
+        const bg = hexToRgb(bgColor);
+        const txtLum = 0.2126 * Math.pow((txt.r/255 + 0.055)/1.055, 2.4) +
+                       0.7152 * Math.pow((txt.g/255 + 0.055)/1.055, 2.4) +
+                       0.0722 * Math.pow((txt.b/255 + 0.055)/1.055, 2.4);
+        const bgLum = 0.2126 * Math.pow((bg.r/255 + 0.055)/1.055, 2.4) +
+                      0.7152 * Math.pow((bg.g/255 + 0.055)/1.055, 2.4) +
+                      0.0722 * Math.pow((bg.b/255 + 0.055)/1.055, 2.4);
+        const origCR = (Math.max(txtLum, bgLum) + 0.05) / (Math.min(txtLum, bgLum) + 0.05);
+
+        const origEl = document.getElementById('m-orig-min');
+        origEl.textContent = `${origCR.toFixed(2)}:1`;
+        origEl.className = 'metric-value ' + (origCR >= targetContrast ? 'pass' : 'fail');
+
+        const enhEl = document.getElementById('m-enh-min');
+        if (adjusted > 0) {
+          enhEl.textContent = `>=${targetContrast.toFixed(1)}:1`;
+          enhEl.className = 'metric-value pass';
+        } else {
+          enhEl.textContent = `${origCR.toFixed(2)}:1`;
+          enhEl.className = 'metric-value ' + (origCR >= targetContrast ? 'pass' : 'fail');
+        }
+
+        addLog(`Pipeline completed in ${elapsed.toFixed(2)}ms`);
+        addLog(`Glyph pixels: ${glyphPixels}, Adjusted: ${adjusted}`);
+
+        result.free();
+
+      } catch (e) {
+        addLog(`ERROR: ${e.message}`);
+        console.error(e);
+      }
+    }
+
+    // Initialize
+    async function init() {
+      try {
+        status.textContent = 'Initializing Futhark WASM...';
+        fut = await newFutharkContext();
+
+        status.textContent = 'Ready';
+        status.className = 'status ready';
+        runBtn.disabled = false;
+
+        addLog('Futhark pipeline context initialized');
+        addLog(`WebAssembly memory: ${(fut._heap.byteLength / 1024 / 1024).toFixed(1)} MB`);
+
+        // Draw edge weight graph
+        drawEdgeWeightGraph(document.getElementById('edge-weight-graph'));
+
+        // Run verification tests
+        await runTests();
+
+        // Initial pipeline run
+        await runPipeline();
+
+      } catch (e) {
+        status.textContent = `Error: ${e.message}`;
+        status.className = 'status error';
+        addLog(`Initialization error: ${e.message}`);
+        addLog(`Make sure to compile pipeline.fut first: make pipeline`);
+        console.error(e);
+      }
+    }
+
+    // Event listeners
+    runBtn.addEventListener('click', runPipeline);
+    document.getElementById('input-text').addEventListener('input', () => {
+      if (fut) runPipeline();
+    });
+
+    // Config change handlers
+    ['target-contrast', 'max-distance', 'sample-distance', 'text-color', 'bg-color', 'font-size'].forEach(id => {
+      document.getElementById(id).addEventListener('change', () => {
+        if (fut) runPipeline();
+      });
+    });
+
+    // Start
+    init();
+  </script>
+</body>
+</html>

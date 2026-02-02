@@ -1,0 +1,116 @@
+"""Library modules for Pixelwise."""
+
+load("@aspect_rules_js//js:defs.bzl", "js_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# ============================================================================
+# Source Groups
+# ============================================================================
+
+# All library sources
+filegroup(
+    name = "sources",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.svelte",
+        "**/*.js",
+        "**/*.d.ts",
+    ]),
+)
+
+# Pixelwise core module
+filegroup(
+    name = "pixelwise_sources",
+    srcs = glob([
+        "pixelwise/**/*.ts",
+    ]),
+)
+
+# Core processing modules
+filegroup(
+    name = "core_sources",
+    srcs = glob([
+        "core/**/*.ts",
+    ]),
+)
+
+# Composables (Svelte 5 runes)
+filegroup(
+    name = "composable_sources",
+    srcs = glob([
+        "composables/**/*.ts",
+    ]),
+)
+
+# Components
+filegroup(
+    name = "component_sources",
+    srcs = glob([
+        "components/**/*.ts",
+        "components/**/*.svelte",
+    ]),
+)
+
+# Workers
+filegroup(
+    name = "worker_sources",
+    srcs = glob([
+        "workers/**/*.ts",
+    ]),
+)
+
+# Futhark WASM bindings
+filegroup(
+    name = "futhark_sources",
+    srcs = glob([
+        "futhark/**/*.ts",
+        "futhark/**/*.d.ts",
+        "futhark/**/*.js",
+        "futhark/**/*.wasm",
+        "futhark/**/*.mjs",
+    ]),
+)
+
+# ============================================================================
+# Libraries
+# ============================================================================
+
+# Main library
+js_library(
+    name = "lib",
+    srcs = [":sources"],
+    deps = [
+        "//:node_modules",
+    ],
+)
+
+# Pixelwise core library
+js_library(
+    name = "pixelwise",
+    srcs = [":pixelwise_sources"],
+    deps = [
+        ":futhark",
+        "//:node_modules",
+    ],
+)
+
+# Core processing library
+js_library(
+    name = "core",
+    srcs = [":core_sources"],
+    deps = [
+        ":pixelwise",
+        "//:node_modules",
+    ],
+)
+
+# Futhark bindings library
+js_library(
+    name = "futhark",
+    srcs = [":futhark_sources"],
+    deps = [
+        "//:node_modules",
+        "//futhark:all",
+    ],
+)

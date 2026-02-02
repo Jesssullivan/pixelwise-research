@@ -1,0 +1,84 @@
+# Container build context ignore file
+# Reduces build context size and improves build performance
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+docs/
+tex_research/
+
+# IDE and Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.npm/
+.yarn/
+
+# Build outputs
+.svelte-kit/
+build/
+dist/
+.output/
+*.log
+
+# Tests
+tests/
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+playwright.*.config.ts
+vitest.config.ts
+coverage/
+
+# Futhark build artifacts (can be copied from host)
+futhark/*.c
+futhark/*.h
+
+# Podman/Docker
+ContainerFile
+podman-compose.yml
+.dockerignore
+.containerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Env files
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS
+Thumbs.db
+.DS_Store

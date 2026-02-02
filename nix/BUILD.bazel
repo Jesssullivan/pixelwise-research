@@ -1,0 +1,5 @@
+# Nix configuration files for rules_nixpkgs
+
+exports_files([
+    "nixpkgs.nix",
+])

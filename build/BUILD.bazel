@@ -1,0 +1,8 @@
+# Custom build rules for Pixelwise
+
+exports_files([
+    "defs.bzl",
+    "futhark.bzl",
+    "nix_oci.bzl",
+    "nix_oci_extension.bzl",
+])

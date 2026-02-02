@@ -1,0 +1,129 @@
+# Pixelwise Bazel Configuration
+# ================================
+
+# ============================================================================
+# Common Settings
+# ============================================================================
+
+# Performance
+build --jobs=auto
+build --experimental_remote_cache_compression
+build --remote_download_outputs=minimal
+
+# Bzlmod is the default in Bazel 7+
+common --enable_bzlmod
+
+# Lockfile for reproducibility
+common --lockfile_mode=update
+
+# ============================================================================
+# Nix Integration
+# ============================================================================
+
+# Use Nix-provided toolchains
+build --host_platform=@rules_nixpkgs_core//platforms:host
+build --incompatible_enable_cc_toolchain_resolution
+
+# ============================================================================
+# Rust / WASM Configuration
+# ============================================================================
+
+# WASM targets
+build:wasm --platforms=//platforms:wasm32
+build:wasm --features=simd128
+
+# Rust SIMD flags
+build --@rules_rust//:extra_rustc_flag=-Ctarget-feature=+simd128
+build --@rules_rust//:extra_rustc_flags=-Ctarget-feature=+simd128
+
+# ============================================================================
+# Test Configuration
+# ============================================================================
+
+# Default test output (errors only for cleaner output)
+test --test_output=errors
+
+# Show test output on failure
+test --test_verbose_timeout_warnings
+
+# Test timeouts
+test --test_timeout=60,300,900,3600
+
+# Cache test results
+test --cache_test_results=yes
+
+# Flaky test handling
+test --flaky_test_attempts=2
+
+# ============================================================================
+# Development Configuration
+# ============================================================================
+
+build:dev --compilation_mode=fastbuild
+build:dev --strip=never
+test:dev --test_output=all
+
+# ============================================================================
+# Release Configuration
+# ============================================================================
+
+build:release --compilation_mode=opt
+build:release --strip=always
+build:release --copt=-O3
+
+# ============================================================================
+# CI Configuration
+# ============================================================================
+
+build:ci --config=release
+build:ci --announce_rc
+build:ci --color=yes
+build:ci --show_timestamps
+test:ci --test_output=all
+test:ci --flaky_test_attempts=2
+
+# Remote caching (when available)
+# build:ci --remote_cache=grpc://cache.example.com:9092
+# build:ci --remote_upload_local_results=true
+
+# ============================================================================
+# Nix Integration
+# ============================================================================
+
+# Pass Attic cache configuration to Nix builds invoked by repository rules
+common --action_env=ATTIC_CACHE=main
+common --action_env=NIX_CONFIG
+
+# ============================================================================
+# Convenience Aliases
+# ============================================================================
+
+# Quick development iteration
+build:quick --config=dev
+test:quick --test_tag_filters=-slow,-e2e
+
+# Full test suite
+test:full --test_tag_filters=
+test:full --test_output=all
+
+# ============================================================================
+# Platform Definitions
+# ============================================================================
+
+# Define custom platforms in BUILD files, reference here for aliases
+# build:linux --platforms=//platforms:linux_x86_64
+# build:macos --platforms=//platforms:macos_arm64
+
+# ============================================================================
+# Startup Options
+# ============================================================================
+
+# Use persistent worker for faster builds
+startup --host_jvm_args=-Xmx4g
+
+# ============================================================================
+# Import Local Overrides
+# ============================================================================
+
+# Allow user-specific overrides (not checked into git)
+try-import %workspace%/.bazelrc.local

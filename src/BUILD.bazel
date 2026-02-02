@@ -1,0 +1,60 @@
+"""SvelteKit application source files."""
+
+load("@aspect_rules_js//js:defs.bzl", "js_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# ============================================================================
+# Source Groups
+# ============================================================================
+
+# All TypeScript/Svelte source files
+filegroup(
+    name = "sources",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.svelte",
+        "**/*.js",
+        "**/*.css",
+        "**/*.md",
+        "**/*.json",
+    ]),
+)
+
+# Library code
+filegroup(
+    name = "lib_sources",
+    srcs = glob([
+        "lib/**/*.ts",
+        "lib/**/*.svelte",
+    ]),
+)
+
+# Routes (SvelteKit pages)
+filegroup(
+    name = "route_sources",
+    srcs = glob([
+        "routes/**/*.ts",
+        "routes/**/*.svelte",
+    ]),
+)
+
+# ============================================================================
+# Libraries
+# ============================================================================
+
+# Main application library
+js_library(
+    name = "app",
+    srcs = [":sources"],
+    deps = [
+        "//:node_modules",
+        "//src/lib:lib",
+    ],
+)
+
+# Re-export lib for convenience
+alias(
+    name = "lib",
+    actual = "//src/lib:lib",
+)

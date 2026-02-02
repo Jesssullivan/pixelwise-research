@@ -1,0 +1,130 @@
+"""OCI container image targets for Pixelwise.
+
+This BUILD file provides Bazel targets for working with nix2container images
+defined in flake.nix. The images are built by Nix and exported as tarballs
+that can be loaded into container runtimes or pushed to registries.
+
+Architecture:
+    flake.nix (nix2container) → @nix2container_*//:tarball → load/push targets
+"""
+
+package(default_visibility = ["//visibility:public"])
+
+# ============================================================================
+# Development Container
+# ============================================================================
+
+# Load dev container into local container runtime (podman/docker)
+sh_binary(
+    name = "load_dev",
+    srcs = ["scripts/load_image.sh"],
+    args = [
+        "$(location @nix2container_dev//:tarball)",
+        "pixelwise-dev:latest",
+    ],
+    data = ["@nix2container_dev//:tarball"],
+)
+
+# Run dev container with proper mounts and ports
+sh_binary(
+    name = "run_dev",
+    srcs = ["scripts/run_dev.sh"],
+    args = ["$(location @nix2container_dev//:tarball)"],
+    data = ["@nix2container_dev//:tarball"],
+)
+
+# Alias for convenience: `bazel run //containers:dev`
+alias(
+    name = "dev",
+    actual = ":run_dev",
+)
+
+# Export dev tarball path (for CI artifacts)
+filegroup(
+    name = "pixelwise_dev_tar",
+    srcs = ["@nix2container_dev//:tarball"],
+)
+
+# ============================================================================
+# Production Container
+# ============================================================================
+
+# Load production container
+sh_binary(
+    name = "load_prod",
+    srcs = ["scripts/load_image.sh"],
+    args = [
+        "$(location @nix2container_prod//:tarball)",
+        "pixelwise:latest",
+    ],
+    data = ["@nix2container_prod//:tarball"],
+)
+
+# Push production container to registry
+sh_binary(
+    name = "push_prod",
+    srcs = ["scripts/push_image.sh"],
+    args = [
+        "$(location @nix2container_prod//:tarball)",
+        "registry.gitlab.com/tinyland/pixelwise",
+    ],
+    data = ["@nix2container_prod//:tarball"],
+)
+
+# Export prod tarball path (for CI artifacts)
+filegroup(
+    name = "pixelwise_prod_tar",
+    srcs = ["@nix2container_prod//:tarball"],
+)
+
+# Alias for convenience
+alias(
+    name = "prod",
+    actual = ":load_prod",
+)
+
+# ============================================================================
+# Caddy Sidecar
+# ============================================================================
+
+# Load Caddy container
+sh_binary(
+    name = "load_caddy",
+    srcs = ["scripts/load_image.sh"],
+    args = [
+        "$(location @nix2container_caddy//:tarball)",
+        "pixelwise-caddy:latest",
+    ],
+    data = ["@nix2container_caddy//:tarball"],
+)
+
+# Export Caddy tarball
+filegroup(
+    name = "pixelwise_caddy_tar",
+    srcs = ["@nix2container_caddy//:tarball"],
+)
+
+alias(
+    name = "caddy",
+    actual = ":load_caddy",
+)
+
+# ============================================================================
+# Convenience Targets
+# ============================================================================
+
+# Build all container tarballs (for CI)
+filegroup(
+    name = "all",
+    srcs = [
+        ":pixelwise_caddy_tar",
+        ":pixelwise_dev_tar",
+        ":pixelwise_prod_tar",
+    ],
+)
+
+# Alias to match original target name
+alias(
+    name = "tarballs",
+    actual = ":all",
+)

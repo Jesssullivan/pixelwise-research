@@ -1,0 +1,89 @@
+"""Pixelwise - WCAG-compliant text rendering with WASM SIMD."""
+
+module(
+    name = "pixelwise",
+    version = "0.1.0",
+)
+
+# ============================================================================
+# Nix Integration (hermetic toolchains)
+# ============================================================================
+
+bazel_dep(name = "rules_nixpkgs_core", version = "0.12.0")
+bazel_dep(name = "rules_nixpkgs_nodejs", version = "0.12.0")
+
+# Register Nix-provided toolchains
+nix_repo = use_extension("@rules_nixpkgs_core//extensions:repository.bzl", "nix_repo")
+nix_repo.default(
+    name = "nixpkgs",
+    nix_file = "//:nix/nixpkgs.nix",
+)
+use_repo(nix_repo, "nixpkgs")
+
+# ============================================================================
+# OCI Containers
+# ============================================================================
+
+bazel_dep(name = "rules_oci", version = "2.2.0")
+
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+
+# Base images from nix2container (referenced via Nix)
+oci.pull(
+    name = "distroless_base",
+    digest = "sha256:ccaef5ee4c8a8c766a3cee6b66a83f7d19af8e32e0bb68f8b2e47e0a1e2d5c52",
+    image = "gcr.io/distroless/cc-debian12",
+    platforms = ["linux/amd64", "linux/arm64"],
+)
+use_repo(oci, "distroless_base", "distroless_base_linux_amd64", "distroless_base_linux_arm64")
+
+# ============================================================================
+# JavaScript / TypeScript
+# ============================================================================
+
+bazel_dep(name = "aspect_rules_js", version = "2.3.0")
+bazel_dep(name = "aspect_rules_ts", version = "3.5.0")
+bazel_dep(name = "rules_nodejs", version = "6.3.2")
+
+npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm")
+npm.npm_translate_lock(
+    name = "npm",
+    pnpm_lock = "//:pnpm-lock.yaml",
+    verify_node_modules_ignored = "//:.bazelignore",
+)
+use_repo(npm, "npm")
+
+# ============================================================================
+# Testing
+# ============================================================================
+
+bazel_dep(name = "rules_testing", version = "0.6.0")
+
+# ============================================================================
+# nix2container Bridge
+# ============================================================================
+
+# This extension bridges nix2container images from flake.nix to Bazel,
+# enabling the unified build pipeline: just → bazel → nix2container
+
+nix_oci = use_extension("//build:nix_oci_extension.bzl", "nix_oci_extension")
+
+nix_oci.image(
+    name = "nix2container_dev",
+    flake_output = "container-dev",
+)
+nix_oci.image(
+    name = "nix2container_prod",
+    flake_output = "container-prod",
+)
+nix_oci.image(
+    name = "nix2container_caddy",
+    flake_output = "container-caddy",
+)
+
+use_repo(
+    nix_oci,
+    "nix2container_dev",
+    "nix2container_prod",
+    "nix2container_caddy",
+)

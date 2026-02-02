@@ -1,0 +1,107 @@
+"""Futhark WASM modules for WCAG-compliant text rendering."""
+
+load("//build:futhark.bzl", "futhark_library", "futhark_test", "futhark_wasm")
+
+package(default_visibility = ["//visibility:public"])
+
+# ============================================================================
+# Library Modules
+# ============================================================================
+
+# ESDT (Exact Signed Distance Transform) library
+futhark_library(
+    name = "esdt_lib",
+    srcs = ["esdt.fut"],
+)
+
+# WCAG contrast calculation library
+futhark_library(
+    name = "wcag_lib",
+    srcs = ["wcag.fut"],
+)
+
+# ============================================================================
+# WASM Modules
+# ============================================================================
+
+# ESDT WASM module (standalone)
+futhark_wasm(
+    name = "esdt_wasm",
+    srcs = ["esdt.fut"],
+)
+
+# WCAG WASM module (standalone)
+futhark_wasm(
+    name = "wcag_wasm",
+    srcs = ["wcag.fut"],
+)
+
+# Complete pipeline WASM module (combines ESDT + WCAG)
+futhark_wasm(
+    name = "pipeline_wasm",
+    srcs = [
+        "esdt.fut",
+        "pipeline.fut",
+        "wcag.fut",
+    ],
+    main = "pipeline.fut",
+)
+
+# ============================================================================
+# Tests
+# ============================================================================
+
+# ESDT unit tests
+futhark_test(
+    name = "esdt_test",
+    src = "esdt.fut",
+    backend = "c",
+)
+
+# WCAG unit tests
+futhark_test(
+    name = "wcag_test",
+    src = "wcag.fut",
+    backend = "c",
+)
+
+# Pipeline integration tests
+futhark_test(
+    name = "pipeline_test",
+    src = "pipeline.fut",
+    backend = "c",
+    deps = [
+        ":esdt_lib",
+        ":wcag_lib",
+    ],
+)
+
+# All Futhark tests
+test_suite(
+    name = "tests",
+    tests = [
+        ":esdt_test",
+        ":pipeline_test",
+        ":wcag_test",
+    ],
+)
+
+# ============================================================================
+# File Groups
+# ============================================================================
+
+# All Futhark source files
+filegroup(
+    name = "sources",
+    srcs = glob(["*.fut"]),
+)
+
+# All WASM outputs
+filegroup(
+    name = "wasm_all",
+    srcs = [
+        ":esdt_wasm",
+        ":pipeline_wasm",
+        ":wcag_wasm",
+    ],
+)

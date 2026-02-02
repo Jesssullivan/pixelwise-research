@@ -1,0 +1,109 @@
+# Caddyfile for Pixelwise Development
+# Provides COOP/COEP headers required for SharedArrayBuffer (WebGPU/WASM SIMD zero-copy)
+#
+# Environment variables:
+#   SVELTEKIT_HOST: SvelteKit container hostname (default: pw-app)
+#   SVELTEKIT_PORT: SvelteKit port (default: 5175)
+#   HMR_PORT: Vite HMR WebSocket port (default: 24679)
+
+{
+    admin 0.0.0.0:2019
+    auto_https off
+
+    servers {
+        # Use HTTP/1.1 only - Vite dev server doesn't support h2c
+        protocols h1
+        timeouts {
+            read_body 30s
+            read_header 10s
+            write 30s
+            idle 120s
+        }
+    }
+}
+
+# Main HTTP server (using 8080 for rootless container compatibility)
+http://:8080 {
+    # CRITICAL: COOP/COEP headers for SharedArrayBuffer support
+    # These headers enable cross-origin isolation required for:
+    # - SharedArrayBuffer (WASM SIMD zero-copy buffers)
+    # - High-resolution performance.now() timing
+    # - WebGPU SharedArrayBuffer interop
+    header Cross-Origin-Opener-Policy "same-origin"
+    header Cross-Origin-Embedder-Policy "credentialless"
+
+    # Health check endpoint - respond directly
+    handle /healthz {
+        respond "OK" 200
+    }
+
+    # Vite HMR WebSocket - dedicated port for reliable HMR
+    # WebSocket connections for HMR use dedicated port 24678
+    @vite_hmr_websocket {
+        header Connection *Upgrade*
+        header Upgrade websocket
+    }
+
+    handle @vite_hmr_websocket {
+        reverse_proxy {$SVELTEKIT_HOST:pw-app}:{$HMR_PORT:24679} {
+            flush_interval -1
+            header_up Host {upstream_hostport}
+            header_up Connection {http.request.header.Connection}
+            header_up Upgrade {http.request.header.Upgrade}
+        }
+    }
+
+    # Alternative HMR path (Vite sometimes uses this)
+    handle /__vite_hmr {
+        reverse_proxy {$SVELTEKIT_HOST:pw-app}:{$HMR_PORT:24679} {
+            flush_interval -1
+            header_up Host {upstream_hostport}
+            header_up Connection {http.request.header.Connection}
+            header_up Upgrade {http.request.header.Upgrade}
+        }
+    }
+
+    # Vite client and assets - main app port
+    @vite_client {
+        path /@vite/client
+        path /@vite/*
+    }
+
+    handle @vite_client {
+        reverse_proxy {$SVELTEKIT_HOST:pw-app}:{$SVELTEKIT_PORT:5175}
+    }
+
+    # WASM files with correct MIME type
+    @wasm {
+        path *.wasm
+    }
+    handle @wasm {
+        header Content-Type "application/wasm"
+        reverse_proxy {$SVELTEKIT_HOST:pw-app}:{$SVELTEKIT_PORT:5175}
+    }
+
+    # Static assets
+    handle /static/* {
+        reverse_proxy {$SVELTEKIT_HOST:pw-app}:{$SVELTEKIT_PORT:5175}
+    }
+
+    # API routes
+    handle /api/* {
+        reverse_proxy {$SVELTEKIT_HOST:pw-app}:{$SVELTEKIT_PORT:5175}
+    }
+
+    # All other requests
+    handle {
+        reverse_proxy {$SVELTEKIT_HOST:pw-app}:{$SVELTEKIT_PORT:5175}
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 50mb
+            roll_keep 3
+        }
+        format json
+        level {$LOG_LEVEL:INFO}
+    }
+}

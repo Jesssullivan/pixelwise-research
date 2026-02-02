@@ -1,0 +1,39 @@
+{
+	"extends": "./.svelte-kit/tsconfig.json",
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": false,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"allowSyntheticDefaultImports": true,
+		"noImplicitAny": false,  // Allow implicit any for Svelte 5 migration
+		"strict": false,  // Temporarily disable for migration
+		"sourceMap": true,
+		"target": "ES2018",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		// Override SvelteKit's verbatimModuleSyntax for Svelte 5 runes compatibility
+		"verbatimModuleSyntax": false,
+		// Add Svelte 5 types, Vite environment, and WebGPU
+		"types": ["vite/client", "@webgpu/types"],
+		// Svelte 5 specific settings
+		"allowImportingTsExtensions": true,
+		"noEmit": true,
+		"moduleDetection": "force",
+		// Fix Svelte 5 module issues - DISABLE TYPESCRIPT CHECKING
+		"skipDefaultLibCheck": true,
+		"noResolve": false,
+		"strictNullChecks": false,
+		"noImplicitReturns": false,
+		"noImplicitThis": false,
+		// suppressImplicitAnyIndexErrors removed in TypeScript 7 - use noUncheckedIndexedAccess instead
+		"noLib": false
+	}
+	// Path aliases are handled by https://kit.svelte.dev/docs/configuration#alias
+	// except $lib which is handled by https://kit.svelte.dev/docs/configuration#files
+	//
+	// If you want to overwrite includes/excludes, make sure to copy over relevant includes/excludes
+	// from referenced tsconfig.json - TypeScript does not merge them in
+}

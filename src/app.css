@@ -1,0 +1,139 @@
+/* Pixelwise App Styles */
+/* Skeleton v4.9 + Tailwind v4 Integration */
+
+/* Import Google Fonts - Optimized weights */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* Import Tailwind CSS v4 */
+@import "tailwindcss";
+
+/* Configure Tailwind v4 with our config */
+@config "../tailwind.config.ts";
+
+/* Add Tailwind Typography plugin for prose styling */
+@plugin "@tailwindcss/typography";
+
+/* Import Skeleton base styles */
+@import "@skeletonlabs/skeleton";
+
+/* Import Skeleton built-in themes */
+@import "@skeletonlabs/skeleton/themes/cerberus";
+@import "@skeletonlabs/skeleton/themes/catppuccin";
+@import "@skeletonlabs/skeleton/themes/pine";
+@import "@skeletonlabs/skeleton/themes/rose";
+
+/* Import pixelwise text effect styles */
+@import "./lib/styles/utilities/pixelwise-text.css";
+
+/* ============================================================================
+ * CRITICAL: color-scheme Configuration for Skeleton v4 Pairing Tokens
+ * ============================================================================
+ * Skeleton v4.8+ uses the CSS light-dark() function for color pairing tokens
+ * (e.g., --color-surface-100-900). This function REQUIRES the color-scheme
+ * property to be explicitly set:
+ *   - color-scheme: light -> light-dark() returns first value
+ *   - color-scheme: dark -> light-dark() returns second value
+ *
+ * Without this, components using pairing tokens render transparent!
+ * See: https://developer.mozilla.org/en-US/docs/Web/CSS/color-scheme
+ */
+
+/* Default: light mode for all themed elements */
+:root,
+html,
+[data-theme] {
+  color-scheme: light;
+}
+
+/* Dark mode: switch color-scheme for proper light-dark() resolution */
+:root.dark,
+html.dark,
+[data-theme].dark {
+  color-scheme: dark;
+}
+
+/* Smooth theme transitions */
+.theme-transitioning * {
+  transition: background-color 0.2s ease, color 0.2s ease !important;
+}
+
+/* Reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Base layout styles */
+html {
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overscroll-behavior: none;
+  /* Skeleton v4.9 pairing tokens auto-switch via color-scheme */
+  /* bg-surface-50-900 and text-surface-900-50 are applied at component level */
+}
+
+#app {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ========================================
+ * Accessibility: Link Distinguishability
+ * ========================================
+ * WCAG 2.0 Level A: Links must be visually distinct
+ * from surrounding text (SC 1.4.1).
+ */
+.prose a,
+article a,
+p a:not(.btn) {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  transition: text-decoration-color 0.2s ease;
+}
+
+.prose a:hover,
+article a:hover,
+p a:hover:not(.btn) {
+  text-decoration-thickness: 2px;
+}
+
+/* Exception: Navigation links */
+nav a,
+header a {
+  text-decoration: none;
+}
+
+/* Print styles */
+@media print {
+  nav,
+  .sidebar,
+  .header,
+  .footer,
+  button:not(.print-button) {
+    display: none !important;
+  }
+
+  @page {
+    margin: 0.75in;
+    size: letter;
+  }
+
+  body {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

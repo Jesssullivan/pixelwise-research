@@ -1,0 +1,8 @@
+# Directories to ignore for Bazel
+node_modules
+.svelte-kit
+.git
+build
+dist
+.emscripten_cache
+tex_research

@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Pixelwise ESDT/WCAG Pipeline Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
+    canvas { border: 1px solid #ccc; margin: 0.5rem; image-rendering: pixelated; }
+    .test-result { padding: 0.5rem; margin: 0.5rem 0; border-radius: 4px; }
+    .pass { background: #d4edda; color: #155724; }
+    .fail { background: #f8d7da; color: #721c24; }
+    .info { background: #cce5ff; color: #004085; }
+    pre { background: #f8f9fa; padding: 1rem; overflow-x: auto; }
+    h3 { margin-top: 2rem; }
+    .flex { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .card { border: 1px solid #ddd; padding: 1rem; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Pixelwise ESDT/WCAG Pipeline Test</h1>
+  <p>Testing Futhark WASM implementation of the contrast enhancement pipeline.</p>
+
+  <div id="status" class="test-result info">Loading Futhark WASM module...</div>
+
+  <h2>ESDT Algorithm Tests</h2>
+
+  <h3>Test 1: Single Point Distance Field (3x3)</h3>
+  <div class="flex">
+    <div class="card">
+      <strong>Input (grayscale levels)</strong><br>
+      <canvas id="input1" width="60" height="60"></canvas>
+    </div>
+    <span>&rarr;</span>
+    <div class="card">
+      <strong>ESDT Output (distance)</strong><br>
+      <canvas id="output1" width="60" height="60"></canvas>
+    </div>
+    <div id="result1" class="test-result"></div>
+  </div>
+
+  <h3>Test 2: Horizontal Line Distance Field (5x5)</h3>
+  <div class="flex">
+    <div class="card">
+      <strong>Input</strong><br>
+      <canvas id="input2" width="100" height="100"></canvas>
+    </div>
+    <span>&rarr;</span>
+    <div class="card">
+      <strong>ESDT Output</strong><br>
+      <canvas id="output2" width="100" height="100"></canvas>
+    </div>
+    <div id="result2" class="test-result"></div>
+  </div>
+
+  <h3>Test 3: Anti-aliased Edge (5x5)</h3>
+  <div class="flex">
+    <div class="card">
+      <strong>Input (with gray edge)</strong><br>
+      <canvas id="input3" width="100" height="100"></canvas>
+    </div>
+    <span>&rarr;</span>
+    <div class="card">
+      <strong>ESDT Output</strong><br>
+      <canvas id="output3" width="100" height="100"></canvas>
+    </div>
+    <div id="result3" class="test-result"></div>
+  </div>
+
+  <h2>WCAG Contrast</h2>
+
+  <h3>Edge Weight Function: 4*alpha*(1-alpha)</h3>
+  <p>This function peaks at alpha=0.5 (edge pixels), weighting contrast enhancement at glyph boundaries.</p>
+  <canvas id="edge-weight" width="400" height="100"></canvas>
+
+  <h2>Performance</h2>
+  <div id="perf" class="test-result info"></div>
+
+  <h3>Test Details</h3>
+  <pre id="details"></pre>
+
+  <script type="module">
+    import { newFutharkContext } from './esdt.class.js';
+
+    const status = document.getElementById('status');
+    const details = document.getElementById('details');
+    let log = '';
+
+    function addLog(msg) {
+      log += msg + '\n';
+      details.textContent = log;
+    }
+
+    function drawLevels(canvas, levels, w, h) {
+      const ctx = canvas.getContext('2d');
+      const scale = canvas.width / w;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const level = levels[y * w + x];
+          const gray = Math.round(level * 255);
+          ctx.fillStyle = `rgb(${gray}, ${gray}, ${gray})`;
+          ctx.fillRect(x * scale, y * scale, scale, scale);
+        }
+      }
+    }
+
+    function drawESDT(canvas, esdt_flat, w, h) {
+      const ctx = canvas.getContext('2d');
+      const scale = canvas.width / w;
+
+      // Find max distance for normalization
+      let maxDist = 0;
+      for (let i = 0; i < esdt_flat.length; i += 2) {
+        const dx = esdt_flat[i];
+        const dy = esdt_flat[i + 1];
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 1e9) maxDist = Math.max(maxDist, d);
+      }
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = (y * w + x) * 2;
+          const dx = esdt_flat[idx];
+          const dy = esdt_flat[idx + 1];
+          const d = Math.sqrt(dx * dx + dy * dy);
+
+          // Color by distance (red=near, blue=far)
+          const t = Math.min(1, d / maxDist);
+          const r = Math.round(255 * (1 - t));
+          const b = Math.round(255 * t);
+          ctx.fillStyle = `rgb(${r}, 50, ${b})`;
+          ctx.fillRect(x * scale, y * scale, scale, scale);
+        }
+      }
+    }
+
+    function drawEdgeWeight(canvas) {
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+
+      // Draw edge weight function: 4*alpha*(1-alpha)
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, w, h);
+
+      // Grid
+      ctx.strokeStyle = '#eee';
+      for (let i = 0; i <= 10; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * w/10, 0);
+        ctx.lineTo(i * w/10, h);
+        ctx.stroke();
+      }
+
+      // Curve
+      ctx.strokeStyle = '#2563eb';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, h);
+
+      for (let x = 0; x < w; x++) {
+        const alpha = x / w;
+        const weight = 4 * alpha * (1 - alpha);
+        const y = h - (weight * h);
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // Labels
+      ctx.fillStyle = '#333';
+      ctx.font = '12px system-ui';
+      ctx.fillText('alpha=0 (bg)', 5, h - 5);
+      ctx.fillText('alpha=0.5 (edge)', w/2 - 35, 15);
+      ctx.fillText('alpha=1 (fg)', w - 80, h - 5);
+      ctx.fillText('weight=1.0', w/2 + 30, 15);
+    }
+
+    async function runTests() {
+      try {
+        status.textContent = 'Initializing Futhark context...';
+        const fut = await newFutharkContext();
+        status.textContent = 'Futhark loaded! Running tests...';
+        addLog('Futhark context initialized');
+        addLog(`WebAssembly memory: ${fut._heap.byteLength / 1024 / 1024} MB`);
+
+        // Test 1: Single point in center
+        addLog('\n=== Test 1: Single Point ===');
+        const levels1 = new Float32Array([
+          0, 0, 0,
+          0, 1, 0,
+          0, 0, 0
+        ]);
+        drawLevels(document.getElementById('input1'), levels1, 3, 3);
+
+        const levels1_2d = fut.new_f32_2d(levels1, 3, 3);
+        const esdt1 = fut.compute_esdt_2d(levels1_2d, false);
+        const esdt1_flat = await esdt1.toTypedArray();
+        drawESDT(document.getElementById('output1'), esdt1_flat, 3, 3);
+
+        // Verify center has zero distance
+        const center_dx = esdt1_flat[8]; // index 4 * 2 = 8
+        const center_dy = esdt1_flat[9];
+        const center_dist = Math.sqrt(center_dx * center_dx + center_dy * center_dy);
+
+        // Verify corner has distance ~1.414
+        const corner_dx = esdt1_flat[0];
+        const corner_dy = esdt1_flat[1];
+        const corner_dist = Math.sqrt(corner_dx * corner_dx + corner_dy * corner_dy);
+
+        const test1_pass = center_dist < 0.01 && Math.abs(corner_dist - 1.414) < 0.15;
+        document.getElementById('result1').textContent = test1_pass ?
+          `PASS: center=${center_dist.toFixed(3)}, corner=${corner_dist.toFixed(3)}` :
+          `FAIL: center=${center_dist.toFixed(3)}, corner=${corner_dist.toFixed(3)}`;
+        document.getElementById('result1').className = 'test-result ' + (test1_pass ? 'pass' : 'fail');
+        addLog(`center_dist=${center_dist.toFixed(4)} (expected ~0)`);
+        addLog(`corner_dist=${corner_dist.toFixed(4)} (expected ~1.414)`);
+
+        levels1_2d.free();
+        esdt1.free();
+
+        // Test 2: Horizontal line
+        addLog('\n=== Test 2: Horizontal Line ===');
+        const levels2 = new Float32Array([
+          0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0,
+          1, 1, 1, 1, 1,
+          0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0
+        ]);
+        drawLevels(document.getElementById('input2'), levels2, 5, 5);
+
+        const levels2_2d = fut.new_f32_2d(levels2, 5, 5);
+        const esdt2 = fut.compute_esdt_2d(levels2_2d, false);
+        const esdt2_flat = await esdt2.toTypedArray();
+        drawESDT(document.getElementById('output2'), esdt2_flat, 5, 5);
+
+        // Verify line pixels have zero distance
+        let line_ok = true;
+        for (let x = 0; x < 5; x++) {
+          const idx = (2 * 5 + x) * 2;
+          const dx = esdt2_flat[idx];
+          const dy = esdt2_flat[idx + 1];
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d > 0.01) line_ok = false;
+        }
+
+        // Verify adjacent rows have distance ~1
+        let adj_ok = true;
+        for (let x = 0; x < 5; x++) {
+          for (let y of [1, 3]) {
+            const idx = (y * 5 + x) * 2;
+            const dx = esdt2_flat[idx];
+            const dy = esdt2_flat[idx + 1];
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (Math.abs(d - 1) > 0.15) adj_ok = false;
+          }
+        }
+
+        const test2_pass = line_ok && adj_ok;
+        document.getElementById('result2').textContent = test2_pass ?
+          'PASS: Line=0, Adjacent=1' : 'FAIL';
+        document.getElementById('result2').className = 'test-result ' + (test2_pass ? 'pass' : 'fail');
+        addLog(`line_pixels_zero=${line_ok}, adjacent_rows_one=${adj_ok}`);
+
+        levels2_2d.free();
+        esdt2.free();
+
+        // Test 3: Anti-aliased edge
+        addLog('\n=== Test 3: Anti-aliased Edge ===');
+        const levels3 = new Float32Array([
+          0.0, 0.0, 0.2, 0.8, 1.0,
+          0.0, 0.0, 0.2, 0.8, 1.0,
+          0.0, 0.0, 0.2, 0.8, 1.0,
+          0.0, 0.0, 0.2, 0.8, 1.0,
+          0.0, 0.0, 0.2, 0.8, 1.0
+        ]);
+        drawLevels(document.getElementById('input3'), levels3, 5, 5);
+
+        const levels3_2d = fut.new_f32_2d(levels3, 5, 5);
+        const esdt3 = fut.compute_esdt_2d(levels3_2d, false);
+        const esdt3_flat = await esdt3.toTypedArray();
+        drawESDT(document.getElementById('output3'), esdt3_flat, 5, 5);
+
+        // Gray pixels should have sub-pixel offsets (less than 0.5)
+        const gray_idx = 2 * 2; // x=2, y=0
+        const gray_dx = esdt3_flat[gray_idx];
+        const gray_dy = esdt3_flat[gray_idx + 1];
+        const test3_pass = Math.abs(gray_dx) < 0.5 && Math.abs(gray_dy) < 0.5;
+
+        document.getElementById('result3').textContent = test3_pass ?
+          `PASS: gray offset=(${gray_dx.toFixed(3)}, ${gray_dy.toFixed(3)})` :
+          `FAIL: gray offset=(${gray_dx.toFixed(3)}, ${gray_dy.toFixed(3)})`;
+        document.getElementById('result3').className = 'test-result ' + (test3_pass ? 'pass' : 'fail');
+        addLog(`gray_pixel_offset: dx=${gray_dx.toFixed(4)}, dy=${gray_dy.toFixed(4)}`);
+
+        levels3_2d.free();
+        esdt3.free();
+
+        // Draw edge weight visualization
+        drawEdgeWeight(document.getElementById('edge-weight'));
+
+        // Performance test
+        addLog('\n=== Performance Test ===');
+        const size = 256;
+        const perf_levels = new Float32Array(size * size);
+        // Create a circle pattern
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const dist = Math.sqrt((x - size/2)**2 + (y - size/2)**2);
+            perf_levels[y * size + x] = dist < size/4 ? 1 : 0;
+          }
+        }
+
+        const perf_2d = fut.new_f32_2d(perf_levels, size, size);
+
+        // Warmup
+        for (let i = 0; i < 3; i++) {
+          const result = fut.compute_esdt_2d(perf_2d, false);
+          await result.toTypedArray();
+          result.free();
+        }
+
+        // Benchmark
+        const start = performance.now();
+        const iterations = 20;
+        for (let i = 0; i < iterations; i++) {
+          const result = fut.compute_esdt_2d(perf_2d, false);
+          await result.toTypedArray();
+          result.free();
+        }
+        const elapsed = performance.now() - start;
+        const avg = elapsed / iterations;
+
+        document.getElementById('perf').innerHTML =
+          `<strong>${size}x${size} ESDT:</strong> ${avg.toFixed(2)}ms average (${iterations} iterations)<br>` +
+          `<strong>Throughput:</strong> ${((size * size) / avg / 1000).toFixed(1)}M pixels/sec`;
+        addLog(`${size}x${size} ESDT: ${avg.toFixed(2)}ms average`);
+        addLog(`Throughput: ${((size * size) / avg / 1000).toFixed(1)}M pixels/sec`);
+
+        perf_2d.free();
+
+        // Summary
+        const all_pass = test1_pass && test2_pass && test3_pass;
+        status.textContent = all_pass ?
+          'All tests passed! ESDT algorithm verified.' :
+          'Some tests failed - check details below';
+        status.className = 'test-result ' + (all_pass ? 'pass' : 'fail');
+
+      } catch (err) {
+        status.textContent = 'Error: ' + err.message;
+        status.className = 'test-result fail';
+        addLog('Error: ' + err.stack);
+      }
+    }
+
+    runTests();
+  </script>
+</body>
+</html>

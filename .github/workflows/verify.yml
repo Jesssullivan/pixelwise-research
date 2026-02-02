@@ -1,0 +1,118 @@
+name: Research Verification
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  verify:
+    name: Verify Algorithm Implementation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Cache Nix store
+        uses: cachix/cachix-action@v14
+        with:
+          name: devenv
+          skipPush: true
+
+      - name: Install dependencies
+        run: nix develop --command pnpm install --frozen-lockfile
+
+      - name: Run Futhark tests
+        run: nix develop --command futhark test futhark/*.fut
+
+      - name: Run TypeScript tests
+        run: nix develop --command pnpm test -- --reporter=verbose
+
+      - name: Verify no mocking in theorem tests
+        run: |
+          if grep -r "mock\|Mock\|jest\.fn\|vi\.fn" tests/theorem-verification/; then
+            echo "ERROR: Mocking detected in theorem verification tests!"
+            exit 1
+          fi
+          echo "OK: No mocking in theorem-verification tests"
+
+      - name: Check theorem references
+        run: |
+          missing=0
+          for test in tests/theorem-verification/*.test.ts; do
+            if ! grep -q "pixelwise.tex" "$test"; then
+              echo "WARNING: $test missing pixelwise.tex reference"
+              missing=$((missing + 1))
+            fi
+          done
+          if [ $missing -gt 0 ]; then
+            echo "WARNING: $missing test files missing theorem references"
+          fi
+          echo "Theorem reference check complete"
+
+  futhark-wasm:
+    name: Build Futhark WASM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Build ESDT WASM
+        run: nix develop --command bash -c "cd futhark && make esdt"
+
+      - name: Build Pipeline WASM
+        run: nix develop --command bash -c "cd futhark && make pipeline"
+
+      - name: Verify WASM artifacts
+        run: |
+          test -f futhark/esdt.wasm || (echo "esdt.wasm not found" && exit 1)
+          test -f futhark/pipeline.wasm || (echo "pipeline.wasm not found" && exit 1)
+          echo "WASM artifacts verified"
+
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: futhark-wasm
+          path: |
+            futhark/*.wasm
+            futhark/*.class.js
+          retention-days: 7
+
+  typecheck:
+    name: TypeScript Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Install dependencies
+        run: nix develop --command pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: nix develop --command pnpm check

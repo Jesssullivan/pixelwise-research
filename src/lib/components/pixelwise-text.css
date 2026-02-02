@@ -1,0 +1,239 @@
+/**
+ * Pixelwise Text Styling
+ *
+ * Text elements that adapt their color based on blob positions behind them
+ * Uses CSS variables exported by PulsingEngine.exportContrastToCSS()
+ *
+ * Usage:
+ * <h1 id="hero-title" class="pixelwise-text">Welcome</h1>
+ */
+
+.pixelwise-text {
+	/* Default values - will be overridden by JavaScript */
+	--contrast-factor: 4.5;
+	--optimal-text-color: #000000;
+	--bg-luminance: 0.5;
+
+	/* Apply optimal text color based on background luminance */
+	color: var(--optimal-text-color, #000000) !important;
+
+	/* Smooth transitions for color changes */
+	transition: color 0.3s ease;
+
+	/* Ensure text is readable regardless of blob position */
+	text-shadow: 0 0 0.5em rgba(0, 0, 0, 0.1);
+
+	/* Handle dark mode */
+	:global(.dark) & {
+		--optimal-text-color: #ffffff;
+	}
+}
+
+/* High contrast mode for better visibility */
+.pixelwise-text--high-contrast {
+	--contrast-factor: 7.0;
+
+	/* Stronger text shadow for readability */
+	text-shadow:
+		0 0 1px rgba(255, 255, 255, 0.3),
+		0 0 2px rgba(0, 0, 0, 0.2);
+
+	/* Ensure minimum contrast ratio */
+	filter: contrast(var(--contrast-factor, 4.5));
+}
+
+/* Large text elements (WCAG AA: 3.0, AAA: 4.5) */
+.pixelwise-text--large {
+	font-size: 1.5rem;
+	line-height: 1.3;
+}
+
+/* Small text elements (WCAG AA: 4.5, AAA: 7.0) */
+.pixelwise-text--small {
+	font-size: 1rem;
+	line-height: 1.5;
+}
+
+/* Text on light backgrounds */
+.pixelwise-text--light {
+	--bg-luminance: 0.9;
+}
+
+/* Text on dark backgrounds */
+.pixelwise-text--dark {
+	--bg-luminance: 0.1;
+}
+
+/* Text that needs to be very visible */
+.pixelwise-text--prominent {
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	text-shadow:
+		0 0 1px currentColor,
+		0 0 2px rgba(0, 0, 0, 0.2);
+}
+
+/* Animated text with pulsing */
+.pixelwise-text--pulsing {
+	animation: textPulse 2s ease-in-out infinite;
+}
+
+@keyframes textPulse {
+	0%, 100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.85;
+	}
+}
+
+/* Text with gradient effect */
+.pixelwise-text--gradient {
+	background: linear-gradient(
+		135deg,
+		var(--optimal-text-color, #000000) 0%,
+		var(--optimal-text-color, #000000) 50%,
+		var(--optimal-text-color, #000000) 100%
+	);
+	-webkit-background-clip: text;
+	background-clip: text;
+	-webkit-text-fill-color: transparent;
+}
+
+/* Text with outline for better contrast */
+.pixelwise-text--outlined {
+	-webkit-text-stroke: 1px var(--optimal-text-color, #000000);
+	paint-order: stroke fill;
+}
+
+/* Utility classes for specific contrast levels */
+.pixelwise-contrast-aa {
+	--contrast-factor: 4.5;
+}
+
+.pixelwise-contrast-aaa {
+	--contrast-factor: 7.0;
+}
+
+.pixelwise-contrast-enhanced {
+	--contrast-factor: 10.0;
+}
+
+/* Responsive text sizing */
+@media (max-width: 768px) {
+	.pixelwise-text--large {
+		font-size: 1.25rem;
+	}
+
+	.pixelwise-text--small {
+		font-size: 0.875rem;
+	}
+}
+
+/* Print styles - ensure high contrast */
+@media print {
+	.pixelwise-text {
+		color: #000000 !important;
+		background-color: #ffffff !important;
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+	}
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+	.pixelwise-text--pulsing {
+		animation: none;
+	}
+
+	.pixelwise-text {
+		transition: color 0.1s ease;
+	}
+}
+
+/* ========================================================================
+   TRUE SINGLE RENDER MODE
+   ======================================================================== */
+
+/**
+ * True Single Render Mode - Hide DOM text entirely
+ *
+ * When pixelwise-true-single-render is active, DOM text becomes invisible
+ * while the compositor overlay renders the WCAG-compliant version.
+ *
+ * This works with the monadic WASM pipeline because:
+ * - PixelLevelGlyphDetector reads textContent (still available)
+ * - getComputedStyle() returns font properties (still available)
+ * - Glyph rasterization renders text INDEPENDENTLY to offscreen canvas
+ * - Alpha channel extraction doesn't depend on visual rendering
+ *
+ * Benefits:
+ * - No double rendering (DOM text + compositor overlay)
+ * - Prevents visual artifacts from misaligned overlays
+ * - Layout preserved (getBoundingClientRect still works)
+ * - Accessibility preserved (screen readers read textContent)
+ * - Text selection still works
+ */
+
+.pixelwise-true-single-render * {
+	/* Hide text while preserving layout */
+	color: transparent !important;
+	-webkit-text-fill-color: transparent !important;
+	text-shadow: none !important;
+
+	/* Preserve text selection (user can still highlight) */
+	user-select: text;
+	-webkit-user-select: text;
+	-moz-user-select: text;
+	-ms-user-select: text;
+
+	/* Preserve cursor for text elements */
+	cursor: text;
+}
+
+/* Compositor overlay should be visible and click-through */
+.pixelwise-true-single-render canvas.pixelwise-compositor {
+	pointer-events: none; /* Allow clicks to reach underlying text */
+	z-index: 1000;
+	opacity: 1;
+}
+
+/* Preserve form input visibility */
+.pixelwise-true-single-render input:not([type="hidden"]),
+.pixelwise-true-single-render textarea,
+.pixelwise-true-single-render select {
+	color: inherit !important;
+	-webkit-text-fill-color: inherit !important;
+}
+
+/* Preserve button text for accessibility */
+.pixelwise-true-single-render button,
+.pixelwise-true-single-render a {
+	/* Buttons and links should be visible for interaction */
+	cursor: pointer;
+}
+
+/* Debug indicator (optional - remove in production) */
+.pixelwise-true-single-render::before {
+	content: '';
+	position: fixed;
+	top: 0;
+	right: 0;
+	width: 10px;
+	height: 10px;
+	background: lime;
+	z-index: 9999;
+	pointer-events: none;
+	opacity: 0.5;
+}
+
+/* Ensure compositor canvas is properly positioned */
+.pixelwise-true-single-render .pixelwise-compositor-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	z-index: 1000;
+}
