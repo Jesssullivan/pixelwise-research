@@ -1,14 +1,12 @@
 # Pixelwise
 
-ESDT-based WCAG contrast computation research implementation.
+ESDT-based WCAG contrast computation research implementation in Futhark targeting webGPU.   
 
-## Research Paper
+## Whitepaper 
 
-**[pixelwise.pdf](tex_research/pixelwise/dist/pixelwise.pdf)** - Mathematical foundations with verification status.
+**[pixelwise.pdf](tex_research/pixelwise/dist/pixelwise.pdf)** - Mathematical foundations with verification status.  I originally developed this is Rust SIMD as a project to learn Rust SIMD, maybe @brightbloom could lend a hand wiht that next time I try :eyes:
 
-## Core Algorithm
-
-### Exact Signed Distance Transform (ESDT)
+## The plan:
 
 ESDT computes offset vectors `(Δx, Δy)` to the nearest edge for each pixel.
 
@@ -71,7 +69,7 @@ Pass 6: WCAG contrast check + luminance adjustment
 
 ### `/demo/compositor`
 
-Full 6-pass ESDT pipeline with Screen Capture API input.
+Full ESDT pipeline with Screen Capture API input.  You need to run a browser with webgpu support to try this demo.
 
 - **Input:** Screen capture via `getDisplayMedia()`
 - **Processing:** Futhark WASM `compute_esdt_2d()` + contrast adjustment
@@ -126,7 +124,7 @@ Run: `pnpm test tests/theorem-verification/`
 
 ## License
 
-LGPL-3.0-or-later
+zlib
 
 ## Author
 
