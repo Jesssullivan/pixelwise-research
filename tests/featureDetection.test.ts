@@ -22,7 +22,6 @@ import {
 	detectWASMSimd,
 	detectSharedArrayBuffer,
 	detectOffscreenCanvas,
-	detectCanvas2D,
 	detectWebGL2,
 	detectMobile,
 	detectPrefersReducedMotion,
@@ -221,20 +220,6 @@ describe('Feature Detection', () => {
 		});
 	});
 
-	describe('detectCanvas2D', () => {
-		it('should detect Canvas 2D availability', () => {
-			const result = detectCanvas2D();
-			expect(typeof result).toBe('boolean');
-		});
-
-		it('should return boolean based on canvas context availability', () => {
-			// jsdom may or may not have full canvas support depending on environment
-			// The function should return a boolean without throwing
-			const result = detectCanvas2D();
-			expect(typeof result).toBe('boolean');
-		});
-	});
-
 	describe('detectWebGL2', () => {
 		it('should detect WebGL2 availability', () => {
 			const result = detectWebGL2();
@@ -343,7 +328,6 @@ describe('Feature Detection', () => {
 			expect(caps).toHaveProperty('wasmSimd');
 			expect(caps).toHaveProperty('sharedArrayBuffer');
 			expect(caps).toHaveProperty('offscreenCanvas');
-			expect(caps).toHaveProperty('canvas2d');
 			expect(caps).toHaveProperty('devicePixelRatio');
 			expect(caps).toHaveProperty('gpuTier');
 			expect(caps).toHaveProperty('recommendedMode');
@@ -359,7 +343,6 @@ describe('Feature Detection', () => {
 			expect(typeof caps.wasmSimd).toBe('boolean');
 			expect(typeof caps.sharedArrayBuffer).toBe('boolean');
 			expect(typeof caps.offscreenCanvas).toBe('boolean');
-			expect(typeof caps.canvas2d).toBe('boolean');
 			expect(typeof caps.devicePixelRatio).toBe('number');
 			expect(typeof caps.gpuTier).toBe('number');
 			expect(typeof caps.isMobile).toBe('boolean');
@@ -429,64 +412,50 @@ describe('Feature Detection', () => {
 	});
 
 	describe('getMissingFeaturesMessage', () => {
-		it('should return appropriate message when all features present', () => {
-			const fullCaps: FeatureCapabilities = {
-				webgpu: true,
-				webgpuAdapter: 'Test Adapter',
-				webgl2: true,
-				wasm: true,
-				wasmSimd: true,
-				sharedArrayBuffer: true,
-				offscreenCanvas: true,
-				canvas2d: true,
-				devicePixelRatio: 1,
-				gpuTier: 3,
-				recommendedMode: 'webgpu',
-				isMobile: false,
-				prefersReducedMotion: false
-			};
+		// Helper to create complete FeatureCapabilities with screen capture defaults
+		const createCaps = (overrides: Partial<FeatureCapabilities>): FeatureCapabilities => ({
+			webgpu: true,
+			webgpuAdapter: 'Test Adapter',
+			webgl2: true,
+			wasm: true,
+			wasmSimd: true,
+			sharedArrayBuffer: true,
+			offscreenCanvas: true,
+			devicePixelRatio: 1,
+			gpuTier: 3,
+			recommendedMode: 'webgpu',
+			isMobile: false,
+			prefersReducedMotion: false,
+			screenCapture: true,
+			importExternalTexture: true,
+			copyExternalImage: true,
+			videoFrameCallback: true,
+			mediaStreamTrackProcessor: true,
+			...overrides
+		});
 
+		it('should return appropriate message when all features present', () => {
+			const fullCaps = createCaps({});
 			const message = getMissingFeaturesMessage(fullCaps);
 			expect(message).toBe('All required features are available.');
 		});
 
 		it('should list missing WebGPU', () => {
-			const caps: FeatureCapabilities = {
+			const caps = createCaps({
 				webgpu: false,
 				webgpuAdapter: null,
-				webgl2: true,
-				wasm: true,
-				wasmSimd: true,
-				sharedArrayBuffer: true,
-				offscreenCanvas: true,
-				canvas2d: true,
-				devicePixelRatio: 1,
 				gpuTier: 0,
-				recommendedMode: 'none',
-				isMobile: false,
-				prefersReducedMotion: false
-			};
+				recommendedMode: 'none'
+			});
 
 			const message = getMissingFeaturesMessage(caps);
 			expect(message).toContain('WebGPU');
 		});
 
 		it('should list missing SharedArrayBuffer with COOP/COEP note', () => {
-			const caps: FeatureCapabilities = {
-				webgpu: true,
-				webgpuAdapter: 'Test',
-				webgl2: true,
-				wasm: true,
-				wasmSimd: true,
-				sharedArrayBuffer: false,
-				offscreenCanvas: true,
-				canvas2d: true,
-				devicePixelRatio: 1,
-				gpuTier: 3,
-				recommendedMode: 'webgpu',
-				isMobile: false,
-				prefersReducedMotion: false
-			};
+			const caps = createCaps({
+				sharedArrayBuffer: false
+			});
 
 			const message = getMissingFeaturesMessage(caps);
 			expect(message).toContain('SharedArrayBuffer');
@@ -494,7 +463,7 @@ describe('Feature Detection', () => {
 		});
 
 		it('should list multiple missing features', () => {
-			const caps: FeatureCapabilities = {
+			const caps = createCaps({
 				webgpu: false,
 				webgpuAdapter: null,
 				webgl2: false,
@@ -502,13 +471,9 @@ describe('Feature Detection', () => {
 				wasmSimd: false,
 				sharedArrayBuffer: false,
 				offscreenCanvas: false,
-				canvas2d: true,
-				devicePixelRatio: 1,
 				gpuTier: 0,
-				recommendedMode: 'none',
-				isMobile: false,
-				prefersReducedMotion: false
-			};
+				recommendedMode: 'none'
+			});
 
 			const message = getMissingFeaturesMessage(caps);
 			expect(message).toContain('WebGPU');

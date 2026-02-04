@@ -1,14 +1,15 @@
 /**
  * Feature Detection for Pixelwise WCAG Compositor
  *
- * Provides feature detection and fallback logic for:
- * - WebGPU support (primary path - TRUE zero-copy SIMD)
- * - Canvas 2D support (minimal fallback)
+ * Provides feature detection for:
+ * - WebGPU support (primary path - Futhark WebGPU backend)
+ * - Futhark WASM multicore (CPU fallback via Emscripten pthreads)
  *
- * Architecture: WebGPU → Error (no fallback - WebGPU is required)
+ * Architecture: Futhark WebGPU → Futhark WASM → Error
  *
- * The WebGPU path enables direct GPU memory mapping where WASM SIMD
- * writes directly to GPU VRAM via bind_webgl_texture() - zero copies.
+ * Note: Futhark's wasm-multicore backend uses Emscripten pthreads (Web Workers)
+ * for parallelism, NOT WASM SIMD v128 instructions. SharedArrayBuffer is
+ * required for the multicore backend (COOP/COEP headers must be set).
  */
 
 import { browser } from '$app/environment';
@@ -21,7 +22,7 @@ import { browser } from '$app/environment';
 export type CompositorMode = 'webgpu' | 'none';
 
 export interface FeatureCapabilities {
-	/** WebGPU is available and functional (PRIMARY - zero-copy SIMD) */
+	/** WebGPU is available and functional (PRIMARY - GPU compute) */
 	webgpu: boolean;
 
 	/** WebGPU adapter info (for debugging) */
@@ -30,7 +31,7 @@ export interface FeatureCapabilities {
 	/** WebAssembly is available */
 	wasm: boolean;
 
-	/** WASM SIMD is available (v128 instructions) */
+	/** WASM SIMD is available (v128 instructions) - detected but not currently used by Futhark */
 	wasmSimd: boolean;
 
 	/** SharedArrayBuffer is available (requires COOP/COEP headers) */
@@ -38,9 +39,6 @@ export interface FeatureCapabilities {
 
 	/** OffscreenCanvas is available */
 	offscreenCanvas: boolean;
-
-	/** Canvas 2D with willReadFrequently is available */
-	canvas2d: boolean;
 
 	/** Device pixel ratio */
 	devicePixelRatio: number;
@@ -83,7 +81,7 @@ export interface FeatureCapabilities {
 
 /**
  * Check if WebGPU is available and functional
- * This is the PRIMARY detection - enables true zero-copy SIMD
+ * This is the PRIMARY detection - enables GPU compute path
  */
 export async function detectWebGPU(): Promise<{ available: boolean; adapter: string | null }> {
 	if (!browser) return { available: false, adapter: null };
@@ -227,7 +225,8 @@ export function detectWebGPUSync(): boolean {
 
 /**
  * Check if WASM SIMD (v128) is available
- * Required for the zero-copy per-pixel SIMD pipeline
+ * Note: Futhark's wasm-multicore backend does NOT use SIMD instructions.
+ * This detection is kept for future optimizations and browser capability reporting.
  */
 export function detectWASMSimd(): boolean {
 	if (!browser) return false;
@@ -294,7 +293,8 @@ export function detectWASMSimd(): boolean {
 
 /**
  * Check if WebGL2 is available and functional
- * @deprecated Kept for compatibility - use detectWebGPU() instead
+ * @deprecated WebGL2 is not used by the Futhark WebGPU backend.
+ * Kept only for GPU tier estimation. Use detectWebGPU() for primary detection.
  */
 export function detectWebGL2(): boolean {
 	if (!browser) return false;
@@ -382,21 +382,6 @@ export function detectOffscreenCanvas(): boolean {
 	try {
 		return typeof OffscreenCanvas !== 'undefined' &&
 			new OffscreenCanvas(1, 1) instanceof OffscreenCanvas;
-	} catch (e) {
-		return false;
-	}
-}
-
-/**
- * Check if Canvas 2D with willReadFrequently is available
- */
-export function detectCanvas2D(): boolean {
-	if (!browser) return false;
-
-	try {
-		const canvas = document.createElement('canvas');
-		const ctx = canvas.getContext('2d', { willReadFrequently: true });
-		return ctx !== null;
 	} catch (e) {
 		return false;
 	}
@@ -531,7 +516,6 @@ export function detectCapabilities(): FeatureCapabilities {
 	const wasmSimd = detectWASMSimd();
 	const sharedArrayBuffer = detectSharedArrayBuffer();
 	const offscreenCanvas = detectOffscreenCanvas();
-	const canvas2d = detectCanvas2D();
 	const gpuTier = estimateGPUTier();
 	const isMobile = detectMobile();
 	const prefersReducedMotion = detectPrefersReducedMotion();
@@ -544,14 +528,14 @@ export function detectCapabilities(): FeatureCapabilities {
 	const videoFrameCallback = detectVideoFrameCallback();
 	const mediaStreamTrackProcessor = detectMediaStreamTrackProcessor();
 
-	// Determine recommended mode - WebGPU or nothing (research mode: no fallbacks)
+	// Determine recommended mode - Futhark WebGPU or nothing
 	let recommendedMode: CompositorMode = 'none';
 
-	if (webgpu && wasm && wasmSimd) {
-		// WebGPU with WASM SIMD is the ONLY path (zero-copy)
+	if (webgpu && wasm) {
+		// Futhark WebGPU with WASM is the primary path
+		// Note: wasmSimd is detected but not required (Futhark uses pthreads, not SIMD)
 		recommendedMode = 'webgpu';
 	}
-	// No canvas2d fallback - research code fails fast
 
 	// Log capabilities in development
 	if (browser && import.meta.env.DEV) {
@@ -562,7 +546,6 @@ export function detectCapabilities(): FeatureCapabilities {
 			wasmSimd,
 			sharedArrayBuffer,
 			offscreenCanvas,
-			canvas2d,
 			gpuTier,
 			isMobile,
 			prefersReducedMotion,
@@ -583,7 +566,6 @@ export function detectCapabilities(): FeatureCapabilities {
 		wasmSimd,
 		sharedArrayBuffer,
 		offscreenCanvas,
-		canvas2d,
 		devicePixelRatio,
 		gpuTier,
 		recommendedMode,
@@ -608,7 +590,6 @@ export async function detectCapabilitiesAsync(): Promise<FeatureCapabilities> {
 	const wasmSimd = detectWASMSimd();
 	const sharedArrayBuffer = detectSharedArrayBuffer();
 	const offscreenCanvas = detectOffscreenCanvas();
-	const canvas2d = detectCanvas2D();
 	const gpuTier = estimateGPUTier();
 	const isMobile = detectMobile();
 	const prefersReducedMotion = detectPrefersReducedMotion();
@@ -621,14 +602,14 @@ export async function detectCapabilitiesAsync(): Promise<FeatureCapabilities> {
 	const videoFrameCallback = detectVideoFrameCallback();
 	const mediaStreamTrackProcessor = detectMediaStreamTrackProcessor();
 
-	// Determine recommended mode - WebGPU or nothing (research mode: no fallbacks)
+	// Determine recommended mode - Futhark WebGPU or nothing
 	let recommendedMode: CompositorMode = 'none';
 
-	if (webgpuResult.available && wasm && wasmSimd) {
-		// WebGPU with WASM SIMD is the ONLY path (zero-copy)
+	if (webgpuResult.available && wasm) {
+		// Futhark WebGPU with WASM is the primary path
+		// Note: wasmSimd is detected but not required (Futhark uses pthreads, not SIMD)
 		recommendedMode = 'webgpu';
 	}
-	// No canvas2d fallback - research code fails fast
 
 	// Log capabilities in development
 	if (browser && import.meta.env.DEV) {
@@ -640,7 +621,6 @@ export async function detectCapabilitiesAsync(): Promise<FeatureCapabilities> {
 			wasmSimd,
 			sharedArrayBuffer,
 			offscreenCanvas,
-			canvas2d,
 			gpuTier,
 			isMobile,
 			prefersReducedMotion,
@@ -661,7 +641,6 @@ export async function detectCapabilitiesAsync(): Promise<FeatureCapabilities> {
 		wasmSimd,
 		sharedArrayBuffer,
 		offscreenCanvas,
-		canvas2d,
 		devicePixelRatio,
 		gpuTier,
 		recommendedMode,
@@ -722,86 +701,8 @@ export function clearCapabilitiesCache(): void {
 }
 
 // ============================================================================
-// WebGPU Fallback Chain
+// Utility Functions
 // ============================================================================
-
-/**
- * Processing mode for the fallback chain
- */
-export type ProcessingMode = 'webgpu' | 'shared-buffer' | 'worker' | 'none';
-
-/**
- * Result of fallback chain detection
- */
-export interface FallbackChainResult {
-	/** The best available processing mode */
-	mode: ProcessingMode;
-	/** Human-readable description */
-	description: string;
-	/** Whether this mode supports zero-copy */
-	zeroCopy: boolean;
-	/** Warning message if using a fallback */
-	warning: string | null;
-	/** Capabilities used for detection */
-	capabilities: FeatureCapabilities;
-}
-
-/**
- * Determine the best processing mode based on available features
- *
- * Fallback chain (in order of preference):
- * 1. WebGPU + WASM SIMD → True zero-copy (best performance)
- * 2. SharedArrayBuffer + WASM SIMD → Near-zero-copy via worker
- * 3. Worker + WASM SIMD → Standard postMessage (4+ copies)
- * 4. None → No suitable compositor available
- *
- * @returns FallbackChainResult with the best available mode
- */
-export async function detectFallbackChain(): Promise<FallbackChainResult> {
-	const caps = await getCapabilitiesAsync();
-
-	// Chain 1: WebGPU + WASM SIMD (zero-copy)
-	if (caps.webgpu && caps.wasmSimd && caps.wasm) {
-		return {
-			mode: 'webgpu',
-			description: 'WebGPU + WASM SIMD (zero-copy GPU memory binding)',
-			zeroCopy: true,
-			warning: null,
-			capabilities: caps
-		};
-	}
-
-	// Chain 2: SharedArrayBuffer + WASM SIMD (near-zero-copy)
-	if (caps.sharedArrayBuffer && caps.wasmSimd && caps.wasm) {
-		return {
-			mode: 'shared-buffer',
-			description: 'SharedArrayBuffer + WASM SIMD (near-zero-copy via worker)',
-			zeroCopy: false, // Not true zero-copy, but minimal copies
-			warning: 'WebGPU not available. Using SharedArrayBuffer fallback (requires COOP/COEP headers).',
-			capabilities: caps
-		};
-	}
-
-	// Chain 3: Standard worker + WASM SIMD (postMessage copies)
-	if (caps.wasmSimd && caps.wasm) {
-		return {
-			mode: 'worker',
-			description: 'Web Worker + WASM SIMD (postMessage)',
-			zeroCopy: false,
-			warning: 'WebGPU and SharedArrayBuffer not available. Using standard worker with postMessage (reduced performance).',
-			capabilities: caps
-		};
-	}
-
-	// Chain 4: No suitable mode
-	return {
-		mode: 'none',
-		description: 'No suitable compositor available',
-		zeroCopy: false,
-		warning: 'WebGPU and WASM SIMD are required. Check browser compatibility.',
-		capabilities: caps
-	};
-}
 
 /**
  * Get requirements message for missing features
@@ -858,7 +759,7 @@ export default {
 	getCapabilitiesAsync,
 	clearCapabilitiesCache,
 
-	// Primary detectors (WebGPU + WASM SIMD)
+	// Primary detectors (Futhark WebGPU)
 	detectWebGPU,
 	detectWebGPUSync,
 	detectWASMSimd,
@@ -867,7 +768,6 @@ export default {
 	// Secondary detectors
 	detectSharedArrayBuffer,
 	detectOffscreenCanvas,
-	detectCanvas2D,
 	estimateGPUTier,
 	detectMobile,
 	detectPrefersReducedMotion,
@@ -878,6 +778,10 @@ export default {
 	detectCopyExternalImage,
 	detectVideoFrameCallback,
 	detectMediaStreamTrackProcessor,
+
+	// Utility functions
+	getMissingFeaturesMessage,
+	checkCrossOriginIsolation,
 
 	// @deprecated
 	detectWebGL2

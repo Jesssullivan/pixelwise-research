@@ -304,3 +304,117 @@ docs-view: tex
     else
         echo "PDF not found. Run 'just tex' first."
     fi
+
+# === Futhark WebGPU ===
+
+# Build custom Futhark from PR #2140 with WebGPU backend
+futhark-webgpu-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FUTHARK_DIR="$HOME/git/futhark-webgpu"
+    INSTALL_DIR="$HOME/.local/futhark-webgpu/bin"
+
+    if [ ! -d "$FUTHARK_DIR" ]; then
+        echo "[futhark-webgpu] Cloning Futhark repository..."
+        git clone https://github.com/diku-dk/futhark.git "$FUTHARK_DIR"
+    fi
+
+    cd "$FUTHARK_DIR"
+
+    # Ensure we're on the WebGPU branch
+    if ! git rev-parse --verify webgpu-pr2140 &>/dev/null; then
+        echo "[futhark-webgpu] Fetching PR #2140..."
+        git fetch origin pull/2140/head:webgpu-pr2140
+    fi
+
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    if [ "$CURRENT_BRANCH" != "webgpu-pr2140" ]; then
+        echo "[futhark-webgpu] Checking out webgpu-pr2140..."
+        git checkout webgpu-pr2140
+    fi
+
+    echo "[futhark-webgpu] Building Futhark..."
+    cabal build
+
+    echo "[futhark-webgpu] Installing to $INSTALL_DIR..."
+    mkdir -p "$INSTALL_DIR"
+    cabal install --installdir="$INSTALL_DIR" --overwrite-policy=always
+
+    echo "[futhark-webgpu] Done!"
+    echo "Futhark WebGPU: $($INSTALL_DIR/futhark --version)"
+    echo ""
+    echo "Verify WebGPU backend:"
+    echo "  $INSTALL_DIR/futhark webgpu --help"
+
+# Compile Futhark pipeline to WebGPU
+futhark-webgpu-compile:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FUTHARK_WEBGPU="$HOME/.local/futhark-webgpu/bin/futhark"
+    OUTPUT_DIR="/home/jsullivan2/git/pixelwise/src/lib/futhark-webgpu"
+
+    if [ ! -x "$FUTHARK_WEBGPU" ]; then
+        echo "ERROR: Futhark WebGPU not found at $FUTHARK_WEBGPU"
+        echo "Run 'just futhark-webgpu-build' first."
+        exit 1
+    fi
+
+    echo "[futhark-webgpu] Compiling pipeline to WebGPU..."
+    cd /home/jsullivan2/git/pixelwise/futhark
+    $FUTHARK_WEBGPU webgpu --library pipeline.fut -o pipeline-webgpu
+
+    echo "[futhark-webgpu] Installing to $OUTPUT_DIR..."
+    mkdir -p "$OUTPUT_DIR"
+    cp pipeline-webgpu.js "$OUTPUT_DIR/"
+    cp pipeline-webgpu.wasm "$OUTPUT_DIR/"
+
+    echo "[futhark-webgpu] Done!"
+    echo "Generated files:"
+    ls -la "$OUTPUT_DIR/"
+
+# Run Futhark WebGPU correctness tests
+test-futhark-webgpu:
+    pnpm vitest run tests/futhark-webgpu-equivalence.test.ts
+
+# Run performance benchmarks comparing backends
+bench-webgpu:
+    pnpm vitest run tests/futhark-webgpu-benchmark.test.ts --reporter=verbose
+
+# Check Futhark WebGPU installation status
+futhark-webgpu-check:
+    #!/usr/bin/env bash
+    FUTHARK_WEBGPU="$HOME/.local/futhark-webgpu/bin/futhark"
+
+    echo "Futhark WebGPU Status"
+    echo "====================="
+    echo ""
+
+    if [ -x "$FUTHARK_WEBGPU" ]; then
+        echo "✓ Futhark WebGPU installed: $FUTHARK_WEBGPU"
+        echo "  Version: $($FUTHARK_WEBGPU --version 2>&1 | head -n1)"
+        echo ""
+        echo "Available backends:"
+        $FUTHARK_WEBGPU --help 2>&1 | grep -E "^\s+(c|cuda|opencl|multicore|wasm|wasm-multicore|webgpu)" || true
+    else
+        echo "✗ Futhark WebGPU not found"
+        echo ""
+        echo "To install:"
+        echo "  just futhark-webgpu-build"
+    fi
+
+    echo ""
+    echo "Generated WebGPU files:"
+    if [ -d "/home/jsullivan2/git/pixelwise/src/lib/futhark-webgpu" ]; then
+        ls -la /home/jsullivan2/git/pixelwise/src/lib/futhark-webgpu/ 2>/dev/null || echo "  (empty)"
+    else
+        echo "  (directory not created yet)"
+    fi
+
+# Clean Futhark WebGPU generated files
+futhark-webgpu-clean:
+    rm -rf /home/jsullivan2/git/pixelwise/src/lib/futhark-webgpu/pipeline-webgpu.*
+    rm -f /home/jsullivan2/git/pixelwise/futhark/pipeline-webgpu*
+    rm -f /home/jsullivan2/git/pixelwise/futhark/esdt-webgpu*
+    echo "Cleaned Futhark WebGPU generated files"

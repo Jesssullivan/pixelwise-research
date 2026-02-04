@@ -14,10 +14,7 @@
  */
 
 import { browser } from '$app/environment';
-import type {
-	ProcessingMode as GPUProcessingMode,
-	FallbackChainResult
-} from '$lib/pixelwise/featureDetection';
+import type { CompositorMode } from '$lib/pixelwise/featureDetection';
 
 /**
  * WCAG conformance levels
@@ -99,12 +96,10 @@ export interface GPUDeviceInfo {
  * Tracks GPU processing mode, device capabilities, and zero-copy status
  */
 export interface WebGPUState {
-	/** Current GPU processing mode (webgpu, shared-buffer, worker, none) */
-	gpuProcessingMode: GPUProcessingMode;
+	/** Current compositor mode (webgpu or none) */
+	compositorMode: CompositorMode;
 	/** Whether WebGPU is initialized and ready */
 	webgpuReady: boolean;
-	/** Full fallback chain detection result */
-	fallbackChainResult: FallbackChainResult | null;
 	/** Whether true zero-copy is active (GPU buffer → WASM → GPU) */
 	zeroCopyEnabled: boolean;
 	/** Whether SharedArrayBuffer is bound to worker */
@@ -209,14 +204,11 @@ class PixelwiseStore {
 	// WEBGPU-SPECIFIC STATE
 	// ===================================================================
 
-	/** Current GPU processing mode from fallback chain detection */
-	#gpuProcessingMode = $state<GPUProcessingMode>('none');
+	/** Current compositor mode (webgpu or none) */
+	#compositorMode = $state<CompositorMode>('none');
 
 	/** Whether WebGPU is initialized and ready for rendering */
 	#webgpuReady = $state<boolean>(false);
-
-	/** Full fallback chain detection result (includes capabilities) */
-	#fallbackChainResult = $state<FallbackChainResult | null>(null);
 
 	/** Whether true zero-copy is active (GPU buffer → WASM SIMD → GPU) */
 	#zeroCopyEnabled = $state<boolean>(false);
@@ -294,31 +286,31 @@ class PixelwiseStore {
 	 * Requires: WebGPU mode + WASM ready + zero-copy enabled
 	 */
 	get isZeroCopy(): boolean {
-		return this.#gpuProcessingMode === 'webgpu' && this.#zeroCopyEnabled && this.#wasmReady;
+		return this.#compositorMode === 'webgpu' && this.#zeroCopyEnabled && this.#wasmReady;
 	}
 
 	/**
 	 * Whether near-zero-copy (SharedArrayBuffer) is available
-	 * Requires: shared-buffer mode + WASM ready + buffer bound
+	 * Requires: webgpu mode + WASM ready + buffer bound
 	 */
 	get isNearZeroCopy(): boolean {
-		return this.#gpuProcessingMode === 'shared-buffer' && this.#sharedBufferBound && this.#wasmReady;
+		return this.#compositorMode === 'webgpu' && this.#sharedBufferBound && this.#wasmReady;
 	}
 
 	/**
 	 * Whether any optimized processing path is available
-	 * True if zero-copy, near-zero-copy, or standard worker is active
+	 * True if WebGPU mode is active and WASM is ready
 	 */
 	get hasOptimizedPath(): boolean {
-		return this.#gpuProcessingMode !== 'none' && this.#wasmReady;
+		return this.#compositorMode !== 'none' && this.#wasmReady;
 	}
 
 	/**
 	 * Human-readable description of current processing mode
 	 */
 	get processingModeDescription(): string {
-		if (this.#fallbackChainResult) {
-			return this.#fallbackChainResult.description;
+		if (this.#compositorMode === 'webgpu') {
+			return 'Futhark WebGPU (unified backend)';
 		}
 		return 'Not initialized';
 	}
@@ -328,9 +320,8 @@ class PixelwiseStore {
 	 */
 	get webgpuState(): WebGPUState {
 		return {
-			gpuProcessingMode: this.#gpuProcessingMode,
+			compositorMode: this.#compositorMode,
 			webgpuReady: this.#webgpuReady,
-			fallbackChainResult: this.#fallbackChainResult,
 			zeroCopyEnabled: this.#zeroCopyEnabled,
 			sharedBufferBound: this.#sharedBufferBound,
 			gpuDeviceInfo: this.#gpuDeviceInfo,
@@ -396,16 +387,12 @@ class PixelwiseStore {
 
 	// WebGPU-specific getters
 
-	get gpuProcessingMode(): GPUProcessingMode {
-		return this.#gpuProcessingMode;
+	get compositorMode(): CompositorMode {
+		return this.#compositorMode;
 	}
 
 	get webgpuReady(): boolean {
 		return this.#webgpuReady;
-	}
-
-	get fallbackChainResult(): FallbackChainResult | null {
-		return this.#fallbackChainResult;
 	}
 
 	get zeroCopyEnabled(): boolean {
@@ -680,33 +667,28 @@ class PixelwiseStore {
 	// ===================================================================
 
 	/**
-	 * Initialize WebGPU state from fallback chain detection
-	 * Called by compositor after running detectFallbackChain()
-	 * @param result - Fallback chain detection result
+	 * Initialize compositor mode
+	 * Called by compositor after WebGPU detection
+	 * @param mode - Compositor mode (webgpu or none)
 	 */
-	initializeFallbackChain(result: FallbackChainResult): void {
+	initializeCompositorMode(mode: CompositorMode): void {
 		if (!browser) return;
 
-		this.#fallbackChainResult = result;
-		this.#gpuProcessingMode = result.mode;
-		this.#zeroCopyEnabled = result.zeroCopy;
+		this.#compositorMode = mode;
 		this.#crossOriginIsolated = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated;
 
 		// Dispatch event for components to react
 		window.dispatchEvent(
-			new CustomEvent('pixelwise-fallback-chain-init', {
+			new CustomEvent('pixelwise-compositor-init', {
 				detail: {
-					mode: result.mode,
-					description: result.description,
-					zeroCopy: result.zeroCopy,
-					warning: result.warning
+					mode,
+					description: this.processingModeDescription
 				}
 			})
 		);
 
-		console.log(`[Pixelwise] Fallback chain initialized: ${result.description}`, {
-			mode: result.mode,
-			zeroCopy: result.zeroCopy,
+		console.log(`[Pixelwise] Compositor initialized: ${this.processingModeDescription}`, {
+			mode,
 			crossOriginIsolated: this.#crossOriginIsolated
 		});
 	}
@@ -786,9 +768,8 @@ class PixelwiseStore {
 	resetWebGPUState(): void {
 		if (!browser) return;
 
-		this.#gpuProcessingMode = 'none';
+		this.#compositorMode = 'none';
 		this.#webgpuReady = false;
-		this.#fallbackChainResult = null;
 		this.#zeroCopyEnabled = false;
 		this.#sharedBufferBound = false;
 		this.#gpuDeviceInfo = null;
@@ -1084,7 +1065,7 @@ class PixelwiseStore {
 			fingerprint: this.#fingerprint,
 			storageKey: this.getStorageKey(),
 			// WebGPU state
-			gpuProcessingMode: this.#gpuProcessingMode,
+			compositorMode: this.#compositorMode,
 			webgpuReady: this.#webgpuReady,
 			zeroCopyEnabled: this.#zeroCopyEnabled,
 			sharedBufferBound: this.#sharedBufferBound,
@@ -1117,7 +1098,7 @@ class PixelwiseStore {
 		correctionRate: number;
 		avgProcessingTimePerElement: number;
 		webgpu: {
-			mode: GPUProcessingMode;
+			mode: CompositorMode;
 			description: string;
 			zeroCopy: boolean;
 			nearZeroCopy: boolean;
@@ -1136,7 +1117,7 @@ class PixelwiseStore {
 			correctionRate: this.correctionRate,
 			avgProcessingTimePerElement: this.#stats.processingTimeMs / total,
 			webgpu: {
-				mode: this.#gpuProcessingMode,
+				mode: this.#compositorMode,
 				description: this.processingModeDescription,
 				zeroCopy: this.isZeroCopy,
 				nearZeroCopy: this.isNearZeroCopy,

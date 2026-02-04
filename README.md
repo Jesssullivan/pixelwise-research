@@ -152,13 +152,17 @@ Where `α = clamp(1 - d/d_max, 0, 1)`. Peaks at `α = 0.5` (glyph boundaries).
 
 ### Backend Priority
 
-The system automatically selects the best available backend:
+The system uses a unified Futhark backend with automatic fallback:
 
 ```
-1. WebGPU (GPU)           → Fastest, requires GPU adapter
+1. Futhark WebGPU (GPU)   → Fastest, requires GPU adapter + WebGPU browser
 2. Futhark WASM (CPU)     → Multicore, requires COOP/COEP headers
 3. JavaScript Fallback    → Single-threaded, always works
 ```
+
+**Unified Backend:** The ESDT pipeline is generated from a single Futhark source
+(`futhark/pipeline.fut`) that compiles to both WebGPU (WGSL) and WASM multicore backends.
+This ensures algorithmic equivalence between GPU and CPU paths.
 
 ### 6-Pass Pipeline
 
@@ -317,24 +321,31 @@ Performance metrics dashboard.
 | `futhark/Makefile` | WASM build targets |
 | `src/lib/core/ComputeDispatcher.ts` | Backend selection + WebGPU pipeline |
 | `src/lib/futhark/` | WASM module exports |
-| `src/lib/pixelwise/shaders/` | WGSL compute shaders (6 passes + video variants) |
+| `src/lib/pixelwise/shaders/` | Video capture shaders (archived shaders in `archived/`) |
+| `src/lib/futhark-webgpu/` | Futhark-generated WebGPU pipeline |
 | `tests/theorem-verification/` | Property-based tests for formulas |
 
 ---
 
 ## WebGPU Shader Pipeline
 
-When WebGPU is available, a 6-pass GPU compute pipeline is used (Pass 0 is CPU preprocessing):
+When WebGPU is available, a 6-pass GPU compute pipeline is used:
 
-| Pass | Shader | Workgroup | Purpose |
-|------|--------|-----------|---------|
-| 0 | CPU | - | sRGB→Linear, grayscale, Sobel |
-| 1 | `esdt-x-pass.wgsl` | 256 | Horizontal distance propagation |
-| 2 | `esdt-y-pass.wgsl` | 256 | Vertical distance propagation |
-| 3 | `esdt-extract-pixels.wgsl` | 8×8 | Glyph pixel extraction |
-| 4 | `esdt-background-sample.wgsl` | 256 | Background color sampling |
-| 5 | `esdt-contrast-analysis.wgsl` | 256 | WCAG ratio computation |
-| 6 | `esdt-color-adjust.wgsl` | 256 | Hue-preserving adjustment |
+| Pass | Stage | Purpose |
+|------|-------|---------|
+| 1 | Grayscale + Sobel | sRGB→Linear, grayscale, gradient computation |
+| 2 | ESDT X-pass | Horizontal distance propagation |
+| 3 | ESDT Y-pass | Vertical distance propagation |
+| 4 | Glyph extraction | Glyph pixel extraction (distance < threshold) |
+| 5 | Background sampling | Sample background colors along gradient |
+| 6 | Color adjustment | WCAG contrast analysis + hue-preserving adjustment |
+
+**Note:** The GPU pipeline is Futhark-generated from `futhark/pipeline.fut`.
+Hand-written WGSL shaders have been archived to `src/lib/pixelwise/shaders/archived/`.
+
+**Active video capture shaders:**
+- `video-capture-esdt.wgsl` — Required for GPUExternalTexture
+- `video-capture-esdt-fallback.wgsl` — Firefox fallback
 
 **Key data structures:**
 - `DistanceData { delta_x, delta_y, distance }` — 12 bytes
