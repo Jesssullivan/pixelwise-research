@@ -826,7 +826,7 @@ export function createComputeDispatcher() {
 	}
 
 	/**
-	 * Run the full 7-pass WebGPU contrast enhancement pipeline
+	 * Run the full 6-pass WebGPU contrast enhancement pipeline (CPU preprocessing + 6 GPU passes)
 	 *
 	 * Pipeline:
 	 * 1. Grayscale + Gradient computation

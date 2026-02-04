@@ -188,7 +188,7 @@ export function useContrastEnhancer(options: ContrastEnhancerOptions = {}): Cont
 				return;
 			}
 
-			// 2. Run the full GPU pipeline (all 7 passes)
+			// 2. Run the full GPU pipeline (CPU preprocessing + 6 GPU passes)
 			const result = await compute.runFullPipeline(
 				captureResult.data,
 				captureResult.width,
