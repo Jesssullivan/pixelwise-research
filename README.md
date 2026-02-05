@@ -16,8 +16,8 @@ ESDT-based WCAG contrast computation research implementation in Futhark targetin
 ---
 
 
-Classical distance transforms store `d²` (squared distance to nearest edge) for each pixel.
-This is efficient but loses information: you know *how far* but not *which direction*.
+See the [research paper](tex_research/pixelwise/dist/pixelwise.pdf) for mathematical foundations
+(Theorem 2.4 - offset vectors) and WCAG 2.1 contrast formulas.
 
 For WCAG contrast enhancement, we need to sample background colors *outward* from text.
 With only `d²`, you need a separate gradient computation pass (Sobel filter, finite differences).
@@ -59,53 +59,12 @@ offset = L - 0.5
 
 ## Core Algorithm
 
-### Exact Signed Distance Transform (ESDT)
+Pixelwise implements the **Exact Signed Distance Transform (ESDT)** with offset vectors,
+computing `(Δx, Δy)` to the nearest edge for each pixel. This provides both distance
+(`√(Δx² + Δy²)`) and gradient direction (`(Δx, Δy)/d`) without a separate Sobel pass.
 
-ESDT computes offset vectors `(Δx, Δy)` to the nearest edge for each pixel.
-
-**Distance:**
-```
-d = √(Δx² + Δy²)
-```
-
-**Gradient (direction to nearest edge):**
-```
-∇d = (Δx, Δy) / d    when d > ε
-```
-
-**Gray pixel initialization** (Definition 2.3 in paper):
-```
-offset = L - 0.5
-```
-Where `L ∈ (0, 1)` is pixel opacity. The offset is applied in the Sobel gradient direction.
-
-### WCAG 2.1 Formulas
-
-**sRGB Linearization:**
-```
-C_lin = C / 12.92                        if C ≤ 0.03928
-C_lin = ((C + 0.055) / 1.055)^2.4        otherwise
-```
-
-**Relative Luminance:**
-```
-L = 0.2126·R_lin + 0.7152·G_lin + 0.0722·B_lin
-```
-
-**Contrast Ratio:**
-```
-CR = (L_lighter + 0.05) / (L_darker + 0.05)
-```
-
-Bounds: `CR ∈ [1, 21]`. Black/white yields CR ≈ 21.
-
-### Edge Weight
-
-```
-w = 4α(1 - α)
-```
-
-Where `α = clamp(1 - d/d_max, 0, 1)`. Peaks at `α = 0.5` (glyph boundaries).
+See the [research paper](tex_research/pixelwise/dist/pixelwise.pdf) for mathematical
+foundations (Theorem 2.4) and WCAG 2.1 contrast formulas.
 
 ---
 
@@ -138,72 +97,39 @@ Pass 6: WCAG contrast check + luminance adjustment
 
 ---
 
-## Build System
+## Futhark WebGPU Backend
 
-### When Builds Run
+Pixelwise originally used precomputed WGSL shaders for GPU contrast computation with
+Futhark WASM multicore as the reference implementation. We're now working toward
+a unified Futhark WebGPU backend that generates both GPU (WebGPU/WGSL) and CPU
+(WASM multicore) code from a single source.
 
-| Build Type | Trigger | Output |
-|------------|---------|--------|
-| Futhark WASM | `just futhark-rebuild` or `make -C futhark` | `esdt.wasm`, `esdt.mjs`, `esdt.class.js` |
-| TypeScript | `pnpm build` or dev server | `dist/` bundle |
-| Research Paper | `just tex` or automatically with `just dev` | `pixelwise.pdf` |
-| Full CI | Push to main/master | GitHub Actions workflow |
+**Foundation**: [Sebastian Paarmann's MSc Thesis (2024)](https://futhark-lang.org/student-projects/sebastian-msc-thesis.pdf)
+introduced the Futhark WebGPU backend as part of his research at DIKU.
 
-### Futhark WASM Compilation
+**Current Status**: Experimental fork at [jesssullivan/futhark](https://github.com/jesssullivan/futhark)
+(branch `development-webgpu`) with Emscripten 4.x compatibility patches.
 
-The Futhark compiler generates WASM with multicore support:
+**Open Questions for Futhark Upstream**:
 
-```bash
-# Direct compilation
-futhark wasm-multicore --library futhark/esdt.fut -o futhark/esdt
+1. **Mainlining**: PR #2140 is substantial (~9,800 insertions). Options include:
+   - Mainline into diku-dk/futhark (requires review bandwidth)
+   - Maintain as external fork (faster iteration, fragmentation risk)
+   - Hybrid: core backend upstream, JS/TS tooling external
 
-# Via make (recommended)
-make -C futhark esdt
+2. **Emscripten API**: Emscripten 4.x replaced `-sUSE_WEBGPU` with `--use-port=emdawnwebgpu`,
+   requiring ~20 Dawn C API signature updates in the RTS.
 
-# Via just (rebuilds all)
-just futhark-rebuild
-```
+3. **TypeScript Transpiler**: TypeScript source improves DX but adds:
+   - Build toolchain complexity (`tsc` integrated into Haskell build)
+   - npm ecosystem dependency for type definitions
+   - Distribution questions for generated JS
 
-**Generated artifacts:**
-
-| File | Purpose |
-|------|---------|
-| `esdt.wasm` | Compiled WebAssembly binary (~130KB) |
-| `esdt.mjs` | Emscripten runtime (ES module, loads WASM + spawns workers) |
-| `esdt.class.js` | FutharkContext wrapper (JavaScript API) |
-
-### COOP/COEP Headers (Required for Futhark Multicore)
-
-Futhark's WASM multicore backend uses `SharedArrayBuffer` for parallel execution.
-Browsers require Cross-Origin Isolation headers to enable this:
-
-```http
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Embedder-Policy: credentialless
-```
-
-These are configured in `vite.config.ts` and applied automatically by `just dev`.
-
-**Verification:**
-```javascript
-// In browser console
-console.log(self.crossOriginIsolated);  // Should be true
-```
-
-**Without these headers:** Futhark falls back to single-threaded WASM (slower).
-
-### Parallelism Model
-
-Futhark's `wasm-multicore` backend does **NOT** use WASM SIMD (v128 instructions).
-Instead, it achieves parallelism through:
-
-1. **Emscripten pthreads** → Web Workers
-2. **SharedArrayBuffer** → Zero-copy data sharing between workers
-3. **Thread count** → `navigator.hardwareConcurrency`
+See [RFC: WebGPU Backend Distribution Strategy](https://github.com/jesssullivan/futhark/issues/1).
 
 ---
 
-## Development
+## Build System
 
 ### Quick Start
 
@@ -224,15 +150,29 @@ just dev             # Start server at localhost:5175 (with COOP/COEP headers)
 | `just tex` | Compile research paper PDF |
 | `just build` | Full Bazel build |
 
-### Feature Detection
+### Futhark WASM Compilation
 
-The system detects capabilities at runtime (`src/lib/pixelwise/featureDetection.ts`):
+```bash
+# Direct compilation
+futhark wasm-multicore --library futhark/esdt.fut -o futhark/esdt
 
-| Capability | Detection | Required For |
-|------------|-----------|--------------|
-| `webgpu` | `navigator.gpu.requestAdapter()` | WebGPU backend |
-| `sharedArrayBuffer` | `SharedArrayBuffer` constructor | Futhark multicore |
-| `wasmSimd` | v128.const module compilation | Future SIMD optimization |
+# Via make (recommended)
+make -C futhark esdt
+
+# Via just (rebuilds all)
+just futhark-rebuild
+```
+
+**Generated artifacts:**
+
+| File | Purpose |
+|------|---------|
+| `esdt.wasm` | Compiled WebAssembly binary (~130KB) |
+| `esdt.mjs` | Emscripten runtime (ES module) |
+| `esdt.class.js` | FutharkContext wrapper (JavaScript API) |
+
+**Note:** Futhark WASM multicore requires COOP/COEP headers for `SharedArrayBuffer`.
+These are configured in `vite.config.ts` and applied automatically by `just dev`.
 
 ---
 
@@ -244,7 +184,6 @@ Full 6-pass ESDT pipeline with Screen Capture API input. **Requires WebGPU-enabl
 
 - **Backend:** WebGPU → Futhark WASM → JS fallback
 - **Input:** Screen capture via `getDisplayMedia()`
-- **Processing:** Real ESDT + WCAG contrast adjustment
 - **Output:** WebGL2 overlay with adjusted pixels
 
 ### `/demo/gradient-direction`
@@ -252,15 +191,13 @@ Full 6-pass ESDT pipeline with Screen Capture API input. **Requires WebGPU-enabl
 ESDT offset vector visualization.
 
 - **Backend:** Futhark WASM (`compute_esdt_2d()`)
-- **Input:** Rasterized text (Canvas 2D)
 - **Output:** Gradient arrows showing `(Δx, Δy)` vectors, distance heatmap
 
 ### `/demo/contrast-analysis`
 
 WCAG 2.1 contrast ratio computation.
 
-- **Backend:** Web Worker (TypeScript, not Futhark)
-- **Input:** Two RGB colors (foreground, background)
+- **Backend:** Web Worker (TypeScript)
 - **Output:** Contrast ratio, AA/AAA compliance status
 
 
@@ -274,17 +211,13 @@ WCAG 2.1 contrast ratio computation.
 
 ---
 
-## Verification
+## Testing
 
-Tests in `tests/theorem-verification/` verify:
+Tests in `tests/theorem-verification/` verify WCAG formulas and ESDT properties.
 
-- Linearization threshold `0.03928` (not `0.04045`)
-- Gamma exponent `2.4` (not `2.5`)
-- CR bounds `[1, 21]`
-- Edge weight peak at `α = 0.5`
-- Offset vector distance/gradient derivation
-
-Run: `pnpm test tests/theorem-verification/`
+```bash
+pnpm test tests/theorem-verification/
+```
 
 ---
 
@@ -311,3 +244,4 @@ Key references:
 - Meijster, A. et al. (2000). A General Algorithm for Computing Distance Transforms in Linear Time.
 - Wittens, S. (2023). Subpixel Distance Transform. https://acko.net/blog/subpixel-distance-transform/
 - Henriksen, T. et al. (2017). Futhark: Purely Functional GPU-Programming. PLDI '17.
+- Paarmann, S. (2024). A WebGPU Backend for Futhark. MSc Thesis, DIKU.
