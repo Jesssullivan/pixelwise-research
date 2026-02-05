@@ -1,4 +1,3 @@
-# Pixelwise
 
 ESDT-based WCAG contrast computation research implementation in Futhark targeting WebGPU.
 
@@ -13,28 +12,44 @@ ESDT-based WCAG contrast computation research implementation in Futhark targetin
 - [ ] Maybe lace up with outbot harness when continuing research
 - [ ] Add multiarch gpu demos
 
----
-
-## Research Paper
-
-**[pixelwise.pdf](tex_research/pixelwise/dist/pixelwise.pdf)** - Mathematical foundations with verification status.
-
-- Originally developed with Rust SIMD as a project to learn Rust SIMD, maybe @brightbloom could lend a hand with that next time :eyes:
-- This project received autonomous assistance with PBT constraining, fuzzing, verification and function composition as well as some GPU integration work performed within **Tinyland** with the xoxd.ai stack as a bit of a dogfooding experiment, which will be coming out of stealth Q3 2026.
-- xoxd.ai is hiring.
 
 ---
 
-## Approach
-
-ESDT (Exact Signed Distance Transform) stores offset vectors `(Δx, Δy)` instead of scalar distances.
-This provides gradient direction for free, eliminating one pipeline pass compared to traditional
-distance transforms that require a separate Sobel filter.
 
 See the [research paper](tex_research/pixelwise/dist/pixelwise.pdf) for mathematical foundations
 (Theorem 2.4 - offset vectors) and WCAG 2.1 contrast formulas.
 
-### Key References
+For WCAG contrast enhancement, we need to sample background colors *outward* from text.
+With only `d²`, you need a separate gradient computation pass (Sobel filter, finite differences).
+
+### The ESDT Solution: Track Offset Vectors
+
+Instead of storing `d² = Δx² + Δy²`, ESDT stores the offset vector `(Δx, Δy)` directly.
+
+**What you get for free:**
+- **Distance**: `d = sqrt(Δx² + Δy²)` — same as before
+- **Gradient direction**: `(Δx, Δy) / d` — the direction to the nearest edge
+- **Background sampling**: Follow the gradient outward to find background pixels
+
+This eliminates one pipeline pass and provides mathematically correct gradients.
+
+Anti-aliased fonts produce "gray pixels" at edges where opacity `L ∈ (0, 1)` encodes
+sub-pixel edge position. A common mistake is to add the gray offset as:
+
+```
+d² = x² + y² + (L - 0.5)²    // WRONG: This is 3D distance!
+```
+
+This treats opacity as a third spatial dimension. Instead, ESDT applies the offset
+*along* the 2D gradient direction during initialization:
+
+```
+offset = L - 0.5
+(Δx, Δy) = (offset × gx, offset × gy)  // where (gx, gy) is normalized gradient
+```
+
+
+### References
 
 - **Danielsson (1980)** - Original vector distance transform concept
 - **Meijster et al. (2000)** - Linear-time separable algorithm
@@ -185,36 +200,14 @@ WCAG 2.1 contrast ratio computation.
 - **Backend:** Web Worker (TypeScript)
 - **Output:** Contrast ratio, AA/AAA compliance status
 
-### `/demo/performance`
 
-Performance metrics dashboard (UI mockup for pipeline timing visualization).
+**Active video capture shaders:**
+- `video-capture-esdt.wgsl` — Required for GPUExternalTexture
+- `video-capture-esdt-fallback.wgsl` — Firefox fallback
 
----
-
-## Files
-
-| Path | Contents |
-|------|----------|
-| `futhark/esdt.fut` | ESDT algorithm (Def 2.1, 2.3, Thm 2.4) |
-| `futhark/wcag.fut` | WCAG formulas (Sec 3.1) |
-| `futhark/pipeline.fut` | 6-pass pipeline composition |
-| `futhark/Makefile` | WASM build targets |
-| `src/lib/core/ComputeDispatcher.ts` | Backend selection + WebGPU pipeline |
-| `src/lib/futhark/` | WASM module exports |
-| `src/lib/pixelwise/shaders/` | Video capture shaders (archived shaders in `archived/`) |
-| `src/lib/futhark-webgpu/` | Futhark-generated WebGPU pipeline |
-| `tests/theorem-verification/` | Property-based tests for formulas |
-
----
-
-## WebGPU Shader Pipeline
-
-The GPU pipeline is **Futhark-generated** from `futhark/pipeline.fut`. Hand-written WGSL
-shaders have been archived to `src/lib/pixelwise/shaders/archived/`.
-
-**Active video capture shaders** (required for GPUExternalTexture):
-- `video-capture-esdt.wgsl`
-- `video-capture-esdt-fallback.wgsl` (Firefox)
+**Key data structures:**
+- `DistanceData { delta_x, delta_y, distance }` — 12 bytes
+- `GlyphPixel { x, y, coverage, edge_weight, gradient_x, gradient_y }` — 24 bytes
 
 ---
 
@@ -228,17 +221,13 @@ pnpm test tests/theorem-verification/
 
 ---
 
-## CI/CD
+## Research Paper
 
-GitHub Actions workflow (`.github/workflows/verify.yml`):
+**[pixelwise.pdf](tex_research/pixelwise/dist/pixelwise.pdf)** - Mathematical foundations with verification status.
 
-| Job | Purpose |
-|-----|---------|
-| `verify` | Futhark tests + TypeScript tests |
-| `futhark-wasm` | Build WASM artifacts |
-| `typecheck` | SvelteKit type checking |
-
-Uses Nix + Cachix for hermetic builds.
+- Originally developed with Rust SIMD as a project to learn Rust SIMD, maybe @brightbloom could lend a hand with that next time :eyes:
+- This project received autonomous assistance with PBT constraining, fuzzing, verification and function composition as well as some GPU integration work performed within **Tinyland** with the xoxd.ai stack as a bit of a dogfooding experiment, which will be coming out of stealth Q3 2026.
+- xoxd.ai is hiring.
 
 ---
 
@@ -249,19 +238,6 @@ zlib
 ## Author
 
 Jess Sullivan <jess@sulliwood.org>
-
-## Citations
-
-If you use this work, please cite:
-
-```bibtex
-@software{pixelwise2026,
-  author = {Sullivan, Jess},
-  title = {Pixelwise: ESDT-Based WCAG Contrast Enhancement},
-  year = {2026},
-  url = {https://github.com/Jesssullivan/pixelwise-research}
-}
-```
 
 Key references:
 - Danielsson, P.E. (1980). Euclidean Distance Mapping. CGIP 14(3):227-248.
