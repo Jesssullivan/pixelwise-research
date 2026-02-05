@@ -44,10 +44,6 @@ See [RFC: WebGPU Backend Distribution Strategy](https://github.com/jesssullivan/
 
 ---
 
-
-See the [research paper](tex_research/pixelwise/dist/pixelwise.pdf) for mathematical foundations
-(Theorem 2.4 - offset vectors) and WCAG 2.1 contrast formulas.
-
 For WCAG contrast enhancement, we need to sample background colors *outward* from text.
 With only `d²`, you need a separate gradient computation pass (Sobel filter, finite differences).
 
@@ -86,14 +82,10 @@ offset = L - 0.5
 
 ---
 
-## Core Algorithm
-
 Pixelwise implements the **Exact Signed Distance Transform (ESDT)** with offset vectors,
 computing `(Δx, Δy)` to the nearest edge for each pixel. This provides both distance
 (`√(Δx² + Δy²)`) and gradient direction (`(Δx, Δy)/d`) without a separate Sobel pass.
 
-See the [research paper](tex_research/pixelwise/dist/pixelwise.pdf) for mathematical
-foundations (Theorem 2.4) and WCAG 2.1 contrast formulas.
 
 ---
 
@@ -217,13 +209,13 @@ pnpm test tests/theorem-verification/
 
 ---
 
-## Research Paper
+## Paper
 
-**[pixelwise.pdf](tex_research/pixelwise/dist/pixelwise.pdf)** - Mathematical foundations with verification status.
+- Mathematical foundations with verification status in tex source; not finalized.  Just for funsies. 
 
 - Originally developed with Rust SIMD as a project to learn Rust SIMD, maybe @brightbloom could lend a hand with that next time :eyes:
-- This project received autonomous assistance with PBT constraining, fuzzing, verification and function composition as well as some GPU integration work performed within **Tinyland** with the xoxd.ai stack as a bit of a dogfooding experiment, which will be coming out of stealth Q3 2026.
-- xoxd.ai is hiring.
+- This project received autonomous assistance with PBT constraining, fuzzing, verification and function composition as well as some GPU integration work performed within **Tinyland** with the xoxd.ai stack as a bit of a dogfooding experiment, which will be published and open sourced when it is appropriate to do so
+
 
 ---
 
