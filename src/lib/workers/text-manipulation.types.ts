@@ -82,8 +82,8 @@ export interface ProcessGlyphPixelsPayload {
 /**
  * Payload for ProcessPixelsSIMD operation
  *
- * Direct SIMD processing for maximum performance.
- * Uses true v128 WASM SIMD instructions.
+ * Parallel processing via Futhark WASM multicore.
+ * Note: Despite the name, Futhark uses pthreads/Web Workers, not v128 SIMD.
  */
 export interface ProcessPixelsSIMDPayload {
 	/** Pixel coordinates [x0, y0, x1, y1, ...] */

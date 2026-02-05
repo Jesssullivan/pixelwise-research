@@ -108,15 +108,30 @@ describe('WebGPUVideoCapture', () => {
 	});
 
 	describe('importFrame', () => {
-		it('should throw error for zero-dimension video', async () => {
+		it('should throw error for zero-dimension video (VideoFrame path)', async () => {
 			const { WebGPUVideoCapture } = await import('$lib/capture/WebGPUVideoCapture');
 
 			const capture = new WebGPUVideoCapture(mockDevice);
 
-			const mockVideo = {
-				videoWidth: 0,
-				videoHeight: 0
-			} as HTMLVideoElement;
+			// Use VideoFrame-like object (not HTMLVideoElement) with zero dimensions
+			// This tests the displayWidth/displayHeight path
+			const mockVideoFrame = {
+				displayWidth: 0,
+				displayHeight: 0,
+				close: vi.fn()
+			};
+
+			expect(() => capture.importFrame(mockVideoFrame as unknown as VideoFrame)).toThrow('Video source has zero dimensions');
+		});
+
+		it('should throw error for zero-dimension HTMLVideoElement', async () => {
+			const { WebGPUVideoCapture } = await import('$lib/capture/WebGPUVideoCapture');
+
+			const capture = new WebGPUVideoCapture(mockDevice);
+
+			// Create video element via document.createElement to pass instanceof check
+			const mockVideo = document.createElement('video') as HTMLVideoElement;
+			// Note: videoWidth/videoHeight default to 0 for unloaded video
 
 			expect(() => capture.importFrame(mockVideo)).toThrow('Video source has zero dimensions');
 		});

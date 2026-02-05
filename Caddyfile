@@ -1,5 +1,5 @@
 # Caddyfile for Pixelwise Development
-# Provides COOP/COEP headers required for SharedArrayBuffer (WebGPU/WASM SIMD zero-copy)
+# Provides COOP/COEP headers required for SharedArrayBuffer (Futhark WASM multicore)
 #
 # Environment variables:
 #   SVELTEKIT_HOST: SvelteKit container hostname (default: pw-app)
@@ -26,9 +26,9 @@
 http://:8080 {
     # CRITICAL: COOP/COEP headers for SharedArrayBuffer support
     # These headers enable cross-origin isolation required for:
-    # - SharedArrayBuffer (WASM SIMD zero-copy buffers)
+    # - SharedArrayBuffer (Futhark WASM multicore via Emscripten pthreads)
     # - High-resolution performance.now() timing
-    # - WebGPU SharedArrayBuffer interop
+    # - WebGPU interop
     header Cross-Origin-Opener-Policy "same-origin"
     header Cross-Origin-Embedder-Policy "credentialless"
 

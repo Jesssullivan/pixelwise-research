@@ -82,19 +82,39 @@ Object.defineProperty(global, 'document', {
 	writable: true
 });
 
+// Mock MutationObserver as a class constructor
+class MockMutationObserver {
+	callback: MutationCallback;
+	observe = vi.fn();
+	disconnect = vi.fn();
+	takeRecords = vi.fn().mockReturnValue([]);
+
+	constructor(callback: MutationCallback) {
+		this.callback = callback;
+		// Track constructor calls for assertions
+		(MockMutationObserver as any)._lastInstance = this;
+	}
+
+	static _lastInstance: MockMutationObserver | null = null;
+}
 Object.defineProperty(global, 'MutationObserver', {
-	value: vi.fn(() => ({
-		observe: vi.fn(),
-		disconnect: vi.fn()
-	})),
+	value: MockMutationObserver,
 	writable: true
 });
 
+// Mock ResizeObserver as a class constructor
+class MockResizeObserver {
+	callback: ResizeObserverCallback;
+	observe = vi.fn();
+	disconnect = vi.fn();
+	unobserve = vi.fn();
+
+	constructor(callback: ResizeObserverCallback) {
+		this.callback = callback;
+	}
+}
 Object.defineProperty(global, 'ResizeObserver', {
-	value: vi.fn(() => ({
-		observe: vi.fn(),
-		disconnect: vi.fn()
-	})),
+	value: MockResizeObserver,
 	writable: true
 });
 
@@ -132,12 +152,15 @@ describe('GlyphFrameSynchronizer', () => {
 
 		it('should set up MutationObserver when autoDetectChanges is true', async () => {
 			const { GlyphFrameSynchronizer } = await import('$lib/capture/GlyphFrameSynchronizer');
+			// Reset the static tracker
+			(MockMutationObserver as any)._lastInstance = null;
 
 			new GlyphFrameSynchronizer(mockDevice, 1920, 1080, {
 				autoDetectChanges: true
 			});
 
-			expect(global.MutationObserver).toHaveBeenCalled();
+			// Check that MutationObserver was instantiated
+			expect((MockMutationObserver as any)._lastInstance).not.toBeNull();
 		});
 	});
 

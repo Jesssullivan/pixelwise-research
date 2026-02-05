@@ -34,17 +34,17 @@
 		</div>
 	</div>
 
-	<!-- Note about SIMD -->
+	<!-- Note about parallelism -->
 	<div class="bg-surface-100-800 border border-surface-300-600 rounded-lg p-4">
 		<div class="flex items-start gap-3">
 			<Icon icon="lucide:info" class="text-primary-500 mt-0.5" width={20} />
 			<div>
-				<h3 class="font-semibold text-surface-900-50">Why ESDT is Not SIMD</h3>
+				<h3 class="font-semibold text-surface-900-50">ESDT Parallelism Model</h3>
 				<p class="text-sm text-surface-700-200 mt-1">
 					The Extended Signed Distance Transform uses separable 2D passes (X-pass then Y-pass)
-					that are inherently sequential - each pixel depends on its neighbors in scan order.
-					This is different from contrast/luminance calculations which are embarrassingly parallel.
-					However, the SIMD pipeline uses ESDT results for kernel density weighting.
+					that are inherently sequential within each row/column - each pixel depends on its neighbors in scan order.
+					However, all rows (X-pass) and columns (Y-pass) can be processed in parallel. Futhark exploits this
+					via Web Workers (pthreads), while WebGPU dispatches one workgroup per row/column.
 				</p>
 			</div>
 		</div>

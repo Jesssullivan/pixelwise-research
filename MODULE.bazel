@@ -1,4 +1,4 @@
-"""Pixelwise - WCAG-compliant text rendering with WASM SIMD."""
+"""Pixelwise - WCAG-compliant text rendering with Futhark WASM multicore."""
 
 module(
     name = "pixelwise",

@@ -1,7 +1,7 @@
 {
   "name": "pixelwise",
   "version": "0.1.0",
-  "description": "Experimental WebGPU + WASM SIMD zero-copy compositor",
+  "description": "Experimental WebGPU + Futhark WASM multicore compositor for WCAG contrast",
   "author": {
     "name": "Jess Sullivan",
     "email": "jess@sulliwood.org"
@@ -10,7 +10,7 @@
   "keywords": [
     "webgpu",
     "wasm",
-    "simd",
+    "futhark",
     "accessibility",
     "wcag",
     "svelte",
@@ -67,7 +67,6 @@
     "marked": "^17.0.1",
     "rehype-autolink-headings": "^7.1.0",
     "rehype-slug": "^6.0.0",
-    "runed": "0.37.1",
     "shiki": "^3.21.0",
     "svelte": "^5.46.0"
   },

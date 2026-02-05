@@ -194,10 +194,10 @@ export function calculateBufferSize(maxPixels: number): number {
 }
 
 /**
- * GlyphPixelBuffer - Zero-copy buffer for WASM SIMD processing
+ * GlyphPixelBuffer - SharedArrayBuffer for WASM multicore processing
  *
  * Provides typed views into a SharedArrayBuffer that can be passed
- * directly to WASM without copying. Uses Atomics for synchronization.
+ * to Web Workers without copying. Uses Atomics for synchronization.
  *
  * @example
  * ```typescript

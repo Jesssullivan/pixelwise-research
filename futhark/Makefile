@@ -2,9 +2,12 @@
 # Requires: nix develop (provides futhark + emscripten)
 
 FUTHARK := futhark
+# Custom Futhark with WebGPU backend (from PR #2140)
+# Build with: cabal install --installdir=$HOME/.local/futhark-webgpu/bin
+FUTHARK_WEBGPU := $(HOME)/.local/futhark-webgpu/bin/futhark
 SOURCES := esdt.fut wcag.fut pipeline.fut
 
-.PHONY: all clean test test-all wasm esdt pipeline c check serve bench docs watch
+.PHONY: all clean test test-all wasm esdt pipeline c check serve bench docs watch webgpu webgpu-pipeline clean-webgpu
 
 # Default: build all WASM targets
 all: esdt pipeline
@@ -80,3 +83,59 @@ serve-all:
 	@echo "  Demo index: http://localhost:8080/static/"
 	@echo "  Futhark demos: http://localhost:8080/futhark/"
 	cd .. && python3 -m http.server 8080
+
+# ============================================================
+# WebGPU Backend (Experimental - Futhark PR #2140)
+# ============================================================
+
+# Check if custom Futhark WebGPU is available
+check-webgpu:
+	@if [ ! -x "$(FUTHARK_WEBGPU)" ]; then \
+		echo "ERROR: Futhark WebGPU not found at $(FUTHARK_WEBGPU)"; \
+		echo ""; \
+		echo "To build Futhark with WebGPU support:"; \
+		echo "  1. git clone https://github.com/diku-dk/futhark.git ~/git/futhark-webgpu"; \
+		echo "  2. cd ~/git/futhark-webgpu"; \
+		echo "  3. git fetch origin pull/2140/head:webgpu-pr2140"; \
+		echo "  4. git checkout webgpu-pr2140"; \
+		echo "  5. cabal build"; \
+		echo "  6. cabal install --installdir=\$$HOME/.local/futhark-webgpu/bin"; \
+		exit 1; \
+	fi
+	@echo "Futhark WebGPU: $(shell $(FUTHARK_WEBGPU) --version 2>&1 | head -n1)"
+
+# Compile ESDT to WebGPU (generates .js + .wasm with embedded WGSL)
+webgpu: check-webgpu esdt.fut
+	$(FUTHARK_WEBGPU) webgpu --library esdt.fut -o esdt-webgpu
+
+# Compile full pipeline to WebGPU (PRIMARY TARGET)
+# --library flag generates ES module-compatible output
+webgpu-pipeline: check-webgpu pipeline.fut esdt.fut wcag.fut
+	$(FUTHARK_WEBGPU) webgpu --library pipeline.fut -o pipeline-webgpu
+	@echo "Generated: pipeline-webgpu.js pipeline-webgpu.wasm"
+	@echo "Copy to src/lib/futhark-webgpu/ for integration"
+
+# Copy WebGPU outputs to src/lib/futhark-webgpu/
+install-webgpu: webgpu-pipeline
+	mkdir -p ../src/lib/futhark-webgpu
+	cp pipeline-webgpu.js ../src/lib/futhark-webgpu/
+	cp pipeline-webgpu.wasm ../src/lib/futhark-webgpu/
+	cp pipeline-webgpu.json ../src/lib/futhark-webgpu/
+	cp pipeline-webgpu.wrapper.js ../src/lib/futhark-webgpu/
+	@# Add ESM export to wrapper.js (generated code uses plain globals)
+	@echo '' >> ../src/lib/futhark-webgpu/pipeline-webgpu.wrapper.js
+	@echo 'export { FutharkModule, FutharkArray };' >> ../src/lib/futhark-webgpu/pipeline-webgpu.wrapper.js
+	@echo "Installed to src/lib/futhark-webgpu/"
+
+# Clean WebGPU generated files
+clean-webgpu:
+	rm -f esdt-webgpu esdt-webgpu.js esdt-webgpu.wasm
+	rm -f pipeline-webgpu pipeline-webgpu.js pipeline-webgpu.wasm
+
+# Run Futhark WebGPU tests (when available)
+test-webgpu: check-webgpu esdt.fut
+	$(FUTHARK_WEBGPU) test esdt.fut --backend=webgpu
+
+# Benchmark Futhark WebGPU (when available)
+bench-webgpu: check-webgpu esdt.fut
+	$(FUTHARK_WEBGPU) bench esdt.fut --backend=webgpu

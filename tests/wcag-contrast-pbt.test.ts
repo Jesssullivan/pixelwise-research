@@ -1,5 +1,5 @@
 /**
- * Property-Based Tests (PBT) for SIMD Contrast Calculations
+ * Property-Based Tests (PBT) for WCAG Contrast Calculations
  *
  * These tests verify mathematical properties that must hold for all valid inputs:
  * - Contrast ratio symmetry: contrast(A, B) === contrast(B, A)

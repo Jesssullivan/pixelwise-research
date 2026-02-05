@@ -81,6 +81,93 @@
           '';
         };
 
+        # Development shell with custom Futhark WebGPU backend (PR #2140)
+        # Build instructions:
+        #   1. Clone: git clone https://github.com/diku-dk/futhark.git ~/git/futhark-webgpu
+        #   2. Checkout PR: cd ~/git/futhark-webgpu && git fetch origin pull/2140/head:webgpu-pr2140 && git checkout webgpu-pr2140
+        #   3. Build: cabal build && cabal install --installdir=$HOME/.local/futhark-webgpu/bin
+        devShells.futhark-webgpu = pkgs.mkShell {
+          packages = with pkgs; [
+            # Build system
+            bazel_7
+            just
+
+            # Nix binary cache
+            attic-client
+
+            # Emscripten for Futhark WASM compilation
+            emscripten
+
+            # Node.js ecosystem
+            nodejs_22
+            nodePackages.pnpm
+
+            # LaTeX for research documentation
+            texlive.combined.scheme-full
+
+            # Development utilities
+            watchexec
+            skopeo
+
+            # Haskell toolchain for building Futhark from source
+            ghc
+            cabal-install
+
+            # C libraries needed by Haskell zlib/compression packages
+            # (GHC RTS links against these; hsc2hs needs them at runtime)
+            zlib
+            zstd
+            xz
+            bzip2
+            libffi
+            elfutils
+            pkg-config
+          ];
+
+          shellHook = ''
+            echo "Pixelwise Research Environment (Futhark WebGPU)"
+            echo "================================================"
+            echo ""
+
+            # Check for custom Futhark WebGPU binary
+            FUTHARK_WEBGPU="$HOME/.local/futhark-webgpu/bin/futhark"
+            if [ -x "$FUTHARK_WEBGPU" ]; then
+              export PATH="$HOME/.local/futhark-webgpu/bin:$PATH"
+              echo "Using custom Futhark WebGPU: $($FUTHARK_WEBGPU --version 2>&1 | head -n1)"
+              echo ""
+              echo "WebGPU backend available: $FUTHARK_WEBGPU webgpu --help"
+            else
+              echo "WARNING: Custom Futhark WebGPU not found at $FUTHARK_WEBGPU"
+              echo ""
+              echo "To build Futhark with WebGPU support:"
+              echo "  1. cd ~/git/futhark-webgpu"
+              echo "  2. git fetch origin pull/2140/head:webgpu-pr2140"
+              echo "  3. git checkout webgpu-pr2140"
+              echo "  4. cabal build"
+              echo "  5. cabal install --installdir=$HOME/.local/futhark-webgpu/bin"
+              echo ""
+            fi
+
+            echo "Tools available:"
+            echo "  just      - $(just --version 2>&1 | head -n1)"
+            echo "  bazel     - $(bazel --version 2>&1 | head -n1)"
+            echo "  emcc      - $(emcc --version 2>&1 | head -n1 || echo 'checking...')"
+            echo "  node      - $(node --version)"
+            echo "  pnpm      - $(pnpm --version)"
+            echo "  ghc       - $(ghc --version 2>&1 | head -n1)"
+            echo "  cabal     - $(cabal --version 2>&1 | head -n1)"
+            echo ""
+            echo "Futhark WebGPU commands:"
+            echo "  just futhark-webgpu-build     - Build custom Futhark"
+            echo "  just futhark-webgpu-compile   - Compile pipeline to WebGPU"
+            echo "  just test-webgpu-equivalence  - Run equivalence tests"
+            echo ""
+
+            # Emscripten cache directory (within project)
+            export EM_CACHE=$PWD/.emscripten_cache
+          '';
+        };
+
         # Package for CI/reproducible builds
         packages.default = pkgs.stdenv.mkDerivation {
           pname = "pixelwise";
