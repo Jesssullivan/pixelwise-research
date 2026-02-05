@@ -330,24 +330,28 @@
 				Implementation Status
 			</h2>
 			<p class="text-center text-surface-600-300 mb-12 max-w-2xl mx-auto">
-				Honest assessment distinguishing verified facts from architectural proposals
+				Current progress on core components and features
 			</p>
 
 			<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
 				<div class="bg-surface-100-800 rounded-lg p-8 border border-success-500/30">
-					<h3 class="text-2xl font-semibold mb-6 text-success-500">Verified Components</h3>
+					<h3 class="text-2xl font-semibold mb-6 text-success-500">Completed</h3>
 					<ul class="space-y-3 text-surface-700-200">
 						<li class="flex items-start">
-							<span class="text-success-500 mr-3 font-mono text-sm">14</span>
-							<span>ESDT CPU reference implementation tests (cpu.rs)</span>
+							<span class="text-success-500 mr-3 font-mono text-sm">21</span>
+							<span>WCAG contrast property-based tests</span>
 						</li>
 						<li class="flex items-start">
-							<span class="text-success-500 mr-3 font-mono text-sm">70+</span>
-							<span>WCAG formula tests with property-based verification</span>
+							<span class="text-success-500 mr-3 font-mono text-sm">3</span>
+							<span>Futhark WASM modules (ESDT, WCAG, Pipeline)</span>
 						</li>
 						<li class="flex items-start">
-							<span class="text-success-500 mr-3 font-mono text-sm">6</span>
-							<span>Futhark WASM multicore with X/Y separable passes</span>
+							<span class="text-success-500 mr-3 font-mono text-sm">9</span>
+							<span>WGSL compute shaders for 6-pass pipeline</span>
+						</li>
+						<li class="flex items-start">
+							<span class="text-success-500 mr-3 font-mono text-sm">7</span>
+							<span>WebGPU compute pipelines fully wired</span>
 						</li>
 						<li class="flex items-start">
 							<span class="text-success-500 mr-3 font-mono text-sm">21:1</span>
@@ -355,7 +359,7 @@
 						</li>
 						<li class="flex items-start">
 							<span class="text-success-500 mr-3 font-mono text-sm">7x7</span>
-							<span>Gaussian kernel background sampling (sigma ~1.5)</span>
+							<span>Gaussian kernel background sampling</span>
 						</li>
 						<li class="flex items-start">
 							<span class="text-success-500 mr-3 font-mono text-sm">0</span>
@@ -365,31 +369,23 @@
 				</div>
 
 				<div class="bg-surface-100-800 rounded-lg p-8 border border-warning-500/30">
-					<h3 class="text-2xl font-semibold mb-6 text-warning-500">In Development</h3>
+					<h3 class="text-2xl font-semibold mb-6 text-warning-500">Roadmap</h3>
 					<ul class="space-y-3 text-surface-700-200">
 						<li class="flex items-start">
-							<span class="text-warning-500 mr-3 font-mono text-sm">7</span>
-							<span>WGSL compute shaders (written, not wired to compositor)</span>
+							<span class="text-warning-500 mr-3 font-mono text-sm">~</span>
+							<span>Publish live demo (pixelwise.ephemera.xoxd.ai)</span>
 						</li>
 						<li class="flex items-start">
-							<span class="text-warning-500 mr-3 font-mono text-sm">?</span>
-							<span>30fps @ 1920x1080 (tested only at 100x100)</span>
+							<span class="text-warning-500 mr-3 font-mono text-sm">~</span>
+							<span>Improve transparency handling (FloatingUI integration)</span>
 						</li>
 						<li class="flex items-start">
-							<span class="text-warning-500 mr-3 font-mono text-sm">?</span>
-							<span>WebGPU buffer mapping integration</span>
+							<span class="text-warning-500 mr-3 font-mono text-sm">~</span>
+							<span>Memory management with greedy viewport offloading</span>
 						</li>
 						<li class="flex items-start">
-							<span class="text-warning-500 mr-3 font-mono text-sm">?</span>
-							<span>Production viewport benchmarks</span>
-						</li>
-						<li class="flex items-start">
-							<span class="text-warning-500 mr-3 font-mono text-sm">?</span>
-							<span>Visual validation (perceptual readability testing)</span>
-						</li>
-						<li class="flex items-start">
-							<span class="text-warning-500 mr-3 font-mono text-sm">?</span>
-							<span>SIMD vs. scalar equivalence verification</span>
+							<span class="text-warning-500 mr-3 font-mono text-sm">~</span>
+							<span>Multi-architecture GPU demos</span>
 						</li>
 					</ul>
 				</div>
@@ -487,11 +483,4 @@
 		</div>
 	</section>
 
-	<!-- Footer (page-specific, supplements layout footer) -->
-	<footer class="px-8 py-8 bg-surface-100-800 border-t border-surface-300-600">
-		<div class="max-w-6xl mx-auto text-center text-surface-600-300 text-sm">
-			<p>Research implementation with verified WCAG formulas and property-based tests</p>
-			<p class="mt-2">Svelte 5 + Futhark WASM Multicore + WGSL Compute Shaders</p>
-		</div>
-	</footer>
 </main>

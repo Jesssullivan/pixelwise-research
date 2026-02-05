@@ -130,7 +130,7 @@ import { pixelwiseStore, type WCAGLevel } from '$lib/stores/pixelwiseStore.svelt
 			}
 		} else {
 			console.error('[AccessibilityMonitor] WebGPU required but not available');
-			console.error('[AccessibilityMonitor] Requirements: WebGPU + WASM SIMD');
+			console.error('[AccessibilityMonitor] Requirements: WebGPU + WASM');
 		}
 	}
 
@@ -891,8 +891,8 @@ import { pixelwiseStore, type WCAGLevel } from '$lib/stores/pixelwiseStore.svelt
 									</p>
 									<ul class="text-xs text-warning-700-300 list-disc list-inside mb-3 space-y-1">
 										<li>Real-time WCAG contrast adjustment</li>
-										<li>Per-pixel text remediation via WASM SIMD</li>
-										<li>WebGPU zero-copy GPU compositing</li>
+										<li>Per-pixel text remediation via Futhark WASM</li>
+										<li>WebGPU GPU compositing</li>
 									</ul>
 									<p class="text-xs text-warning-600-400">
 										Enable "Experimental accessibility features" in your privacy settings to use these features.
@@ -902,7 +902,7 @@ import { pixelwiseStore, type WCAGLevel } from '$lib/stores/pixelwiseStore.svelt
 							<div class="bg-tertiary-100-900 border border-tertiary-300-700 p-3 rounded-xl mb-4">
 								<p class="text-xs flex items-center gap-1 text-tertiary-800-200">
 									<Icon icon="lucide:info" width={12} />
-									<strong>WebGPU SIMD:</strong> Zero-copy WCAG contrast adjustment via direct GPU memory binding.
+									<strong>WebGPU:</strong> GPU-accelerated WCAG contrast adjustment via compute shaders.
 								</p>
 							</div>
 
@@ -1079,7 +1079,7 @@ import { pixelwiseStore, type WCAGLevel } from '$lib/stores/pixelwiseStore.svelt
 									<div class="flex items-center justify-between">
 										<span class="text-sm text-surface-700-200">Rendering Mode</span>
 										<span class="badge {compositorMode === 'webgpu' ? 'preset-filled-success-500' : compositorMode === 'canvas2d' ? 'preset-filled-warning-500' : 'preset-tonal-surface'}">
-											{compositorMode === 'webgpu' ? 'WebGPU SIMD' : compositorMode === 'canvas2d' ? 'Canvas 2D' : 'None'}
+											{compositorMode === 'webgpu' ? 'WebGPU Compute' : compositorMode === 'canvas2d' ? 'Canvas 2D' : 'None'}
 										</span>
 									</div>
 
@@ -1160,7 +1160,7 @@ import { pixelwiseStore, type WCAGLevel } from '$lib/stores/pixelwiseStore.svelt
 										<div class="bg-tertiary-100-900 border border-tertiary-300-700 p-3 rounded-xl mt-3">
 											<p class="text-xs flex items-center gap-1 text-tertiary-800-200">
 												<Icon icon="lucide:zap" width={12} />
-												<strong>Zero-copy pipeline:</strong> GPU buffer → mapAsync() → WASM SIMD writes directly to VRAM → unmap() → render.
+												<strong>GPU pipeline:</strong> GPU buffer → mapAsync() → Futhark WASM compute → unmap() → render.
 											</p>
 										</div>
 									{/if}

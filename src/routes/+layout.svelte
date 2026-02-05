@@ -7,6 +7,8 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
+	import OnboardingModal from '$lib/components/OnboardingModal.svelte';
+	import { shouldShowOnboarding } from '$lib/utils/consentStorage';
 
 	interface Props {
 		children: Snippet;
@@ -19,6 +21,9 @@
 	let isDark = $state(false);
 	let mobileMenuOpen = $state(false);
 	let initialized = $state(false);
+
+	// Onboarding modal state
+	let showOnboarding = $state(false);
 
 	// Available themes (Skeleton built-in)
 	const themes = [
@@ -61,6 +66,9 @@
 		// Apply initial state to document
 		applyDarkMode(isDark);
 		applyTheme(currentTheme);
+
+		// Check if onboarding should be shown
+		showOnboarding = shouldShowOnboarding();
 	});
 
 	// Reactive effect: Apply dark mode to document.documentElement when isDark changes
@@ -116,9 +124,14 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<meta
 		name="description"
-		content="Pixelwise: WebGPU + WASM SIMD zero-copy compositor for WCAG 2.1 AAA contrast adjustment"
+		content="Pixelwise: WebGPU + Futhark WASM multicore compositor for WCAG 2.1 AAA contrast adjustment"
 	/>
 </svelte:head>
+
+<!-- Onboarding Modal -->
+{#if showOnboarding}
+	<OnboardingModal onClose={() => showOnboarding = false} />
+{/if}
 
 <!-- Main app container with theme -->
 <div class="flex min-h-screen flex-col bg-surface-50-900" data-theme={currentTheme} class:dark={isDark}>
@@ -294,7 +307,7 @@
 		<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 			<div class="flex flex-col items-center justify-between gap-4 md:flex-row">
 				<p class="text-sm text-surface-500-400">
-					Pixelwise - WebGPU + WASM SIMD zero-copy compositor
+					Pixelwise - WebGPU + Futhark WASM multicore compositor
 				</p>
 				<p class="text-sm text-surface-500-400">
 					A research project exploring WebGPU and Futhark WASM for WCAG-compliant text rendering.

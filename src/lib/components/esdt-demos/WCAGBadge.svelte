@@ -7,19 +7,19 @@
 
 	let { level, ratio, targetLevel = 'AA' }: Props = $props();
 
-	const getBadgeColor = $derived(() => {
+	const getBadgeColor = $derived.by(() => {
 		if (level === 'AAA') return 'bg-success-500 text-white';
 		if (level === 'AA') return 'bg-primary-500 text-white';
 		return 'bg-error-500 text-white';
 	});
 
-	const getLabel = $derived(() => {
+	const getLabel = $derived.by(() => {
 		if (level === 'AAA') return 'AAA';
 		if (level === 'AA') return 'AA';
 		return 'Fail';
 	});
 
-	const getRequiredRatio = $derived(() => {
+	const getRequiredRatio = $derived.by(() => {
 		return targetLevel === 'AAA' ? 7.0 : 4.5;
 	});
 </script>

@@ -3,7 +3,7 @@
 	import Icon from '@iconify/svelte';
 
 	const navItems = [
-		{ href: '/', label: 'Overview', icon: 'lucide:home' },
+		{ href: '/demo', label: 'Overview', icon: 'lucide:home' },
 		{ href: '/demo/compositor', label: 'Live Compositor', icon: 'lucide:layers' },
 		{ href: '/demo/contrast-analysis', label: 'Contrast Analysis', icon: 'lucide:contrast' },
 		{ href: '/demo/gradient-direction', label: 'Gradient Direction', icon: 'lucide:compass' }
@@ -113,7 +113,7 @@
 			Tech Stack
 		</h3>
 		<div class="flex flex-wrap gap-2">
-			{#each ['Futhark', 'WASM', 'WebGL2', 'Svelte 5'] as tech}
+			{#each ['Futhark', 'WASM', 'WebGPU', 'Svelte 5'] as tech}
 				<span class="badge preset-tonal-primary text-xs text-primary-700-300">{tech}</span>
 			{/each}
 		</div>
