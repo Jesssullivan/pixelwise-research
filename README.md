@@ -1,6 +1,35 @@
 
 ESDT-based WCAG contrast computation research implementation in Futhark targeting WebGPU.
 
+Pixelwise originally used precomputed WGSL shaders for GPU contrast computation with
+Futhark WASM multicore as the reference implementation. I am now working toward
+a unified Futhark WebGPU backend that generates both GPU (WebGPU/WGSL) and CPU
+(WASM multicore) code from a single source.
+
+**Foundation**: [Sebastian Paarmann's MSc Thesis (2024)](https://futhark-lang.org/student-projects/sebastian-msc-thesis.pdf)
+introduced the Futhark WebGPU backend as part of his research at DIKU.
+
+**Current Status**: Experimental fork at [jesssullivan/futhark](https://github.com/jesssullivan/futhark)
+(branch `development-webgpu`) with Emscripten 4.x compatibility patches.
+
+**Open Questions for Futhark Upstream**:
+
+1. **Mainlining**: PR #2140 is substantial (~9,800 insertions). Options include:
+   - Mainline into diku-dk/futhark (requires review bandwidth)
+   - Maintain as external fork (faster iteration, fragmentation risk)
+   - Hybrid: core backend upstream, JS/TS tooling external
+
+2. **Emscripten API**: Emscripten 4.x replaced `-sUSE_WEBGPU` with `--use-port=emdawnwebgpu`,
+   requiring ~20 Dawn C API signature updates in the RTS.
+
+3. **TypeScript Transpiler**: TypeScript source improves DX but adds:
+   - Build toolchain complexity (`tsc` integrated into Haskell build)
+   - npm ecosystem dependency for type definitions
+   - Distribution questions for generated JS
+
+See [RFC: WebGPU Backend Distribution Strategy](https://github.com/jesssullivan/futhark/issues/1).
+
+
 ## Todos
 
 - [ ] publish pixelwise.ephemera.xoxd.ai live demo
@@ -95,39 +124,6 @@ Pass 5: Background sampling (outward along ∇d)
 Pass 6: WCAG contrast check + luminance adjustment
 ```
 
----
-
-## Futhark WebGPU Backend
-
-Pixelwise originally used precomputed WGSL shaders for GPU contrast computation with
-Futhark WASM multicore as the reference implementation. We're now working toward
-a unified Futhark WebGPU backend that generates both GPU (WebGPU/WGSL) and CPU
-(WASM multicore) code from a single source.
-
-**Foundation**: [Sebastian Paarmann's MSc Thesis (2024)](https://futhark-lang.org/student-projects/sebastian-msc-thesis.pdf)
-introduced the Futhark WebGPU backend as part of his research at DIKU.
-
-**Current Status**: Experimental fork at [jesssullivan/futhark](https://github.com/jesssullivan/futhark)
-(branch `development-webgpu`) with Emscripten 4.x compatibility patches.
-
-**Open Questions for Futhark Upstream**:
-
-1. **Mainlining**: PR #2140 is substantial (~9,800 insertions). Options include:
-   - Mainline into diku-dk/futhark (requires review bandwidth)
-   - Maintain as external fork (faster iteration, fragmentation risk)
-   - Hybrid: core backend upstream, JS/TS tooling external
-
-2. **Emscripten API**: Emscripten 4.x replaced `-sUSE_WEBGPU` with `--use-port=emdawnwebgpu`,
-   requiring ~20 Dawn C API signature updates in the RTS.
-
-3. **TypeScript Transpiler**: TypeScript source improves DX but adds:
-   - Build toolchain complexity (`tsc` integrated into Haskell build)
-   - npm ecosystem dependency for type definitions
-   - Distribution questions for generated JS
-
-See [RFC: WebGPU Backend Distribution Strategy](https://github.com/jesssullivan/futhark/issues/1).
-
----
 
 ## Build System
 
