@@ -367,8 +367,26 @@ futhark-webgpu-compile:
 
     echo "[futhark-webgpu] Installing to $OUTPUT_DIR..."
     mkdir -p "$OUTPUT_DIR"
-    cp pipeline-webgpu.js "$OUTPUT_DIR/"
     cp pipeline-webgpu.wasm "$OUTPUT_DIR/"
+
+    # Create ESM-compatible version of the Emscripten module
+    # The generated file uses CommonJS exports which don't work in browser ESM context
+    # We append an ESM export at the end
+    cat pipeline-webgpu.js > "$OUTPUT_DIR/pipeline-webgpu.js"
+    echo "" >> "$OUTPUT_DIR/pipeline-webgpu.js"
+    echo "// ESM export (added by just futhark-webgpu-compile)" >> "$OUTPUT_DIR/pipeline-webgpu.js"
+    echo "export default Module;" >> "$OUTPUT_DIR/pipeline-webgpu.js"
+
+    # Also add ESM export to wrapper
+    cat pipeline-webgpu.wrapper.js > "$OUTPUT_DIR/pipeline-webgpu.wrapper.js"
+    echo "" >> "$OUTPUT_DIR/pipeline-webgpu.wrapper.js"
+    echo "// ESM export (added by just futhark-webgpu-compile)" >> "$OUTPUT_DIR/pipeline-webgpu.wrapper.js"
+    echo "export { FutharkModule, FutharkArray };" >> "$OUTPUT_DIR/pipeline-webgpu.wrapper.js"
+
+    # Also copy WASM to static for absolute path access
+    mkdir -p /home/jsullivan2/git/pixelwise/static/wasm
+    cp pipeline-webgpu.wasm /home/jsullivan2/git/pixelwise/static/wasm/
+
 
     echo "[futhark-webgpu] Done!"
     echo "Generated files:"

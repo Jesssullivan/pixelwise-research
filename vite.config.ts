@@ -99,6 +99,10 @@ export default defineConfig(({ mode }) => {
 		ssr: {
 			// Externalize problematic modules to avoid ES interop issues
 			format: 'esm',
+			// Vite 8 beta workaround: increase module runner timeout for slow CSS processing
+			// The default 60s timeout is too short for complex CSS with Tailwind v4
+			// @ts-ignore - Vite 8 beta API
+			moduleRunnerTimeoutMs: 120000, // 120 seconds
 			// OpenTelemetry: Most packages can be bundled, but some must be external
 			// Bundle these to avoid pnpm symlink issues:
 			noExternal: [

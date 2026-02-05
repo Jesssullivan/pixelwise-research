@@ -2,7 +2,7 @@
  * Browser Support Detection for WebGPU
  *
  * Provides detailed browser compatibility checking and recommendations
- * for WebGPU and related features required for the zero-copy SIMD compositor.
+ * for WebGPU and related features required for the Pixelwise compositor.
  */
 
 import { browser } from '$app/environment';
@@ -128,27 +128,39 @@ export function checkWebGPUBrowserSupport(): WebGPUSupport {
 			break;
 
 		case 'Firefox':
-			minimumVersion = '129';
-			if (majorVersion >= 129) {
+			minimumVersion = '141';
+			if (majorVersion >= 141) {
 				supported = true;
-				recommendation = 'Enable WebGPU in about:config: set dom.webgpu.enabled to true';
-				detailedIssue = 'Firefox requires manual enabling: about:config → dom.webgpu.enabled → true';
+				if (browserInfo.os === 'Windows') {
+					recommendation = 'Your browser supports WebGPU by default!';
+				} else {
+					recommendation = 'Enable WebGPU in about:config: set dom.webgpu.enabled to true';
+					detailedIssue = 'Firefox on Linux requires manual enabling: about:config → dom.webgpu.enabled → true';
+				}
 			} else {
-				recommendation = `Update Firefox to version ${minimumVersion} or later, then enable in about:config`;
+				recommendation = `Update Firefox to version ${minimumVersion} or later`;
 				detailedIssue = `Firefox ${browserInfo.version} does not support WebGPU. Minimum version required: ${minimumVersion}`;
 			}
 			break;
 
 		case 'Safari':
-			minimumVersion = 'Technology Preview';
-			supported = false;
-			recommendation = 'Safari WebGPU is experimental. Use Chrome or Edge instead.';
-			detailedIssue = 'Safari WebGPU support is only in Technology Preview builds';
+			minimumVersion = '26';
+			if (majorVersion >= 26) {
+				supported = true;
+				recommendation = 'Your browser supports WebGPU!';
+			} else if (majorVersion >= 17) {
+				supported = true;
+				recommendation = 'WebGPU is available but may need enabling in Develop menu';
+				detailedIssue = 'Safari 17-25: Enable Feature Flags → WebGPU in Develop menu';
+			} else {
+				recommendation = `Update Safari to version ${minimumVersion} or later`;
+				detailedIssue = `Safari ${browserInfo.version} does not support WebGPU. Minimum version required: ${minimumVersion}`;
+			}
 			break;
 
 		default:
-			recommendation = 'Use Chrome 113+, Edge 113+, or Firefox 129+ for WebGPU support';
-			detailedIssue = `Unknown browser: ${browserInfo.name}. WebGPU requires Chrome 113+, Edge 113+, or Firefox 129+`;
+			recommendation = 'Use Chrome 113+, Edge 113+, Firefox 141+, or Safari 26+ for WebGPU support';
+			detailedIssue = `Unknown browser: ${browserInfo.name}. WebGPU requires Chrome 113+, Edge 113+, Firefox 141+, or Safari 26+`;
 			break;
 	}
 

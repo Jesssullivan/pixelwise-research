@@ -12,6 +12,59 @@ import '@fast-check/vitest';
 import { expect, vi } from 'vitest';
 
 /**
+ * Mock OffscreenCanvas for tests that use canvas contexts
+ * jsdom doesn't fully support OffscreenCanvas.getContext('2d')
+ */
+if (typeof globalThis.OffscreenCanvas === 'undefined' || !globalThis.OffscreenCanvas.prototype.getContext) {
+	class MockOffscreenCanvas {
+		width: number;
+		height: number;
+
+		constructor(width: number, height: number) {
+			this.width = width;
+			this.height = height;
+		}
+
+		getContext(type: string): any {
+			if (type === '2d') {
+				return {
+					font: '',
+					measureText: (text: string) => ({
+						width: text.length * 8,
+						actualBoundingBoxAscent: 12,
+						actualBoundingBoxDescent: 3,
+						fontBoundingBoxAscent: 14,
+						fontBoundingBoxDescent: 4,
+						actualBoundingBoxLeft: 0,
+						actualBoundingBoxRight: text.length * 8,
+						alphabeticBaseline: 0,
+						emHeightAscent: 13,
+						emHeightDescent: 3
+					}),
+					fillText: vi.fn(),
+					clearRect: vi.fn(),
+					getImageData: vi.fn().mockReturnValue({
+						data: new Uint8ClampedArray(4),
+						width: 1,
+						height: 1
+					}),
+					putImageData: vi.fn(),
+					drawImage: vi.fn(),
+					canvas: { width: 1, height: 1 }
+				};
+			}
+			return null;
+		}
+
+		transferToImageBitmap(): any {
+			return {};
+		}
+	}
+
+	(globalThis as unknown as Record<string, unknown>).OffscreenCanvas = MockOffscreenCanvas;
+}
+
+/**
  * Mock ImageData if not available in jsdom
  */
 if (typeof globalThis.ImageData === 'undefined') {
@@ -130,4 +183,88 @@ if (typeof globalThis.crossOriginIsolated === 'undefined') {
 		writable: true,
 		configurable: true
 	});
+}
+
+/**
+ * Mock WebGPU globals for tests that use WebGPU constants
+ * GPUBufferUsage and GPUTextureUsage are global constants in browser environments
+ */
+if (typeof globalThis.GPUBufferUsage === 'undefined') {
+	(globalThis as unknown as Record<string, unknown>).GPUBufferUsage = {
+		MAP_READ: 0x0001,
+		MAP_WRITE: 0x0002,
+		COPY_SRC: 0x0004,
+		COPY_DST: 0x0008,
+		INDEX: 0x0010,
+		VERTEX: 0x0020,
+		UNIFORM: 0x0040,
+		STORAGE: 0x0080,
+		INDIRECT: 0x0100,
+		QUERY_RESOLVE: 0x0200
+	};
+}
+
+if (typeof globalThis.GPUTextureUsage === 'undefined') {
+	(globalThis as unknown as Record<string, unknown>).GPUTextureUsage = {
+		COPY_SRC: 0x01,
+		COPY_DST: 0x02,
+		TEXTURE_BINDING: 0x04,
+		STORAGE_BINDING: 0x08,
+		RENDER_ATTACHMENT: 0x10
+	};
+}
+
+if (typeof globalThis.GPUShaderStage === 'undefined') {
+	(globalThis as unknown as Record<string, unknown>).GPUShaderStage = {
+		VERTEX: 0x1,
+		FRAGMENT: 0x2,
+		COMPUTE: 0x4
+	};
+}
+
+if (typeof globalThis.GPUMapMode === 'undefined') {
+	(globalThis as unknown as Record<string, unknown>).GPUMapMode = {
+		READ: 0x0001,
+		WRITE: 0x0002
+	};
+}
+
+/**
+ * Mock HTMLVideoElement for tests that check instanceof
+ */
+if (typeof globalThis.HTMLVideoElement === 'undefined') {
+	class MockHTMLVideoElement {
+		videoWidth: number = 0;
+		videoHeight: number = 0;
+		src: string = '';
+		currentTime: number = 0;
+		paused: boolean = true;
+
+		constructor() {}
+
+		play(): Promise<void> {
+			return Promise.resolve();
+		}
+
+		pause(): void {}
+	}
+	(globalThis as unknown as Record<string, unknown>).HTMLVideoElement = MockHTMLVideoElement;
+}
+
+/**
+ * Mock VideoFrame for tests
+ */
+if (typeof globalThis.VideoFrame === 'undefined') {
+	class MockVideoFrame {
+		displayWidth: number;
+		displayHeight: number;
+
+		constructor(source: any, options?: any) {
+			this.displayWidth = options?.displayWidth ?? 0;
+			this.displayHeight = options?.displayHeight ?? 0;
+		}
+
+		close(): void {}
+	}
+	(globalThis as unknown as Record<string, unknown>).VideoFrame = MockVideoFrame;
 }
