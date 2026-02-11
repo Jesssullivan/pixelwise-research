@@ -180,3 +180,65 @@ jobs:
 
       - name: Type check
         run: nix develop --command pnpm check
+
+  e2e-smoke:
+    name: E2E Smoke Test
+    runs-on: ubuntu-latest
+    needs: verify
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start dev server
+        run: pnpm run dev &
+        env:
+          PORT: 5175
+
+      - name: Wait for dev server
+        run: |
+          echo "Waiting for dev server on port 5175..."
+          timeout 60 bash -c 'until curl -sf http://localhost:5175 > /dev/null 2>&1; do sleep 2; done'
+          echo "Dev server is ready"
+
+      - name: Smoke test demo routes
+        run: |
+          failed=0
+          for route in \
+            "/" \
+            "/demo" \
+            "/demo/compositor" \
+            "/demo/contrast-analysis" \
+            "/demo/gradient-direction" \
+            "/demo/before-after" \
+            "/demo/performance"; do
+            status=$(curl -sf -o /dev/null -w "%{http_code}" "http://localhost:5175${route}" || true)
+            if [ "$status" = "200" ]; then
+              echo "OK  $route ($status)"
+            else
+              echo "FAIL $route ($status)"
+              failed=$((failed + 1))
+            fi
+          done
+          if [ $failed -gt 0 ]; then
+            echo ""
+            echo "ERROR: $failed route(s) failed smoke test"
+            exit 1
+          fi
+          echo ""
+          echo "All routes passed smoke test"
+
+      - name: Stop dev server
+        if: always()
+        run: kill $(lsof -ti:5175) 2>/dev/null || true

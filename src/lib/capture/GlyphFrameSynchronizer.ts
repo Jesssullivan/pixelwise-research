@@ -14,9 +14,9 @@
  * @module capture/GlyphFrameSynchronizer
  */
 
-import { GlyphExtractor, type ExtendedGlyphData, type GlyphBounds } from '$lib/pixelwise/GlyphExtractor';
-import { CoordinateTransformer, type DOMCoord } from '$lib/pixelwise/CoordinateTransformer';
-import { StackingContextResolver, type StackingInfo } from '$lib/pixelwise/StackingContextResolver';
+import { GlyphExtractor, type ExtendedGlyphData } from '$lib/pixelwise/GlyphExtractor';
+import { CoordinateTransformer } from '$lib/pixelwise/CoordinateTransformer';
+import { StackingContextResolver } from '$lib/pixelwise/StackingContextResolver';
 import { FontMetricsCache } from '$lib/pixelwise/FontMetricsCache';
 import type { GlyphPixelBufferV2, RegionFontMetrics } from '$lib/pixelwise/GlyphPixelBuffer';
 
