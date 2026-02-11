@@ -6,7 +6,9 @@
 		{ href: '/demo', label: 'Overview', icon: 'lucide:home' },
 		{ href: '/demo/compositor', label: 'Live Compositor', icon: 'lucide:layers' },
 		{ href: '/demo/contrast-analysis', label: 'Contrast Analysis', icon: 'lucide:contrast' },
-		{ href: '/demo/gradient-direction', label: 'Gradient Direction', icon: 'lucide:compass' }
+		{ href: '/demo/gradient-direction', label: 'Gradient Direction', icon: 'lucide:compass' },
+		{ href: '/demo/performance', label: 'Performance', icon: 'lucide:gauge' },
+		{ href: '/demo/before-after', label: 'Before / After', icon: 'lucide:columns-2' }
 	];
 
 	const pipelineStages = [

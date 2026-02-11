@@ -22,10 +22,7 @@ export default defineConfig({
 			'**/.svelte-kit/**',
 			'tests/e2e/**', // E2E tests use Playwright, not Vitest
 			'tests/a11ywag/**', // Pixel contrast tests use separate config
-			'tests/_archived/**', // Archived tests for removed modules
-			// AccessibilityMonitor.test.ts - Requires @testing-library/svelte (not installed)
-			// Install with: pnpm add -D @testing-library/svelte @testing-library/jest-dom
-			'tests/components/AccessibilityMonitor.test.ts'
+			'tests/_archived/**' // Archived tests for removed modules
 		],
 		// Extended timeouts for a11y and visual tests
 		testTimeout: 60000,
