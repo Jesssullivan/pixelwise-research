@@ -16,6 +16,7 @@
 
 import { browser } from '$app/environment';
 import { detectWebGPU, detectImportExternalTexture } from '$lib/pixelwise/featureDetection';
+import type { FutharkWebGPUContext } from '$lib/futhark-webgpu';
 
 import videoCaptureEsdtShader from '$lib/pixelwise/shaders/video-capture-esdt.wgsl?raw';
 import videoCaptureEsdtFallbackShader from '$lib/pixelwise/shaders/video-capture-esdt-fallback.wgsl?raw';
@@ -52,6 +53,40 @@ export interface PipelineResult {
 	backend: 'futhark-webgpu' | 'futhark-wasm' | 'js-fallback';
 }
 
+/**
+ * Detailed metrics from a single pipeline execution.
+ *
+ * Since the Futhark pipeline runs all 6 passes as a single opaque
+ * GPU dispatch, per-pass timing is not available. Instead we measure
+ * end-to-end pipeline time, data-transfer overhead, and pixel-level
+ * statistics observable from the JS side.
+ */
+export interface PipelineMetrics {
+	/** Core pipeline execution time in ms (Futhark call + GPU sync) */
+	pipelineTimeMs: number;
+	/** Data marshalling overhead in ms (TypedArray copies, pixel counting) */
+	overheadTimeMs: number;
+	/** Total wall-clock time in ms (pipeline + overhead) */
+	totalTimeMs: number;
+	/** Backend that executed this frame */
+	backend: 'futhark-webgpu' | 'futhark-wasm' | 'js-fallback';
+	/** Frame width in pixels */
+	width: number;
+	/** Frame height in pixels */
+	height: number;
+	/** Total pixel count (width * height) */
+	totalPixels: number;
+	/** Number of pixels adjusted by the pipeline */
+	adjustedPixels: number;
+	/** Megapixels processed per second */
+	mpixPerSec: number;
+	/** Timestamp of this measurement (performance.now()) */
+	timestamp: number;
+}
+
+/** Maximum number of metrics entries retained in history */
+const METRICS_HISTORY_SIZE = 120;
+
 export type ComputeBackend = 'futhark-webgpu' | 'futhark-wasm' | 'auto';
 
 interface FutharkContext {
@@ -62,22 +97,6 @@ interface FutharkContext {
 interface FutharkArray {
 	toTypedArray(): Promise<Float32Array>;
 	free(): void;
-}
-
-/**
- * Futhark WebGPU context interface (from $lib/futhark-webgpu)
- */
-interface FutharkWebGPUContext {
-	enhanceContrastRgba(
-		imageFlat: Uint8Array,
-		width: number,
-		height: number,
-		targetContrast: number,
-		maxDistance: number,
-		sampleDistance: number
-	): Promise<Uint8Array>;
-	free(): void;
-	sync(): Promise<void>;
 }
 
 /**
@@ -116,6 +135,17 @@ export function createComputeDispatcher() {
 	let isInitialized = false;
 	let initializationError: Error | null = null;
 	let activeBackend: ComputeBackend = 'auto';
+
+	/** Ring buffer of recent pipeline metrics */
+	const metricsHistory: PipelineMetrics[] = [];
+
+	/** Record a metrics entry, evicting oldest when full */
+	function recordMetrics(m: PipelineMetrics) {
+		metricsHistory.push(m);
+		if (metricsHistory.length > METRICS_HISTORY_SIZE) {
+			metricsHistory.shift();
+		}
+	}
 
 	/**
 	 * Initialize the video capture pipeline (still uses hand-written WGSL
@@ -446,11 +476,16 @@ export function createComputeDispatcher() {
 			throw new Error('Futhark WebGPU context not initialized');
 		}
 
-		const startTime = performance.now();
+		const totalStart = performance.now();
 
 		try {
+			// -- Data marshalling (overhead) --
+			const marshalStart = performance.now();
 			const inputData = new Uint8Array(rgbaData);
+			const marshalTime = performance.now() - marshalStart;
 
+			// -- Core pipeline execution --
+			const pipelineStart = performance.now();
 			const resultData = await futharkWebGPUContext.enhanceContrastRgba(
 				inputData,
 				width,
@@ -459,24 +494,48 @@ export function createComputeDispatcher() {
 				config.maxDistance,
 				config.sampleDistance
 			);
-
 			await futharkWebGPUContext.sync();
+			const pipelineTime = performance.now() - pipelineStart;
 
-			const processingTime = performance.now() - startTime;
-			const adjustedPixels = new Uint8ClampedArray(resultData);
+			// -- Post-processing (overhead) --
+			const postStart = performance.now();
+			const adjustedPixelsArr = new Uint8ClampedArray(resultData);
 
-			// Count adjusted pixels
+			// Count adjusted pixels by comparing input vs output
 			let adjustedCount = 0;
-			for (let i = 3; i < adjustedPixels.length; i += 4) {
-				if (adjustedPixels[i] > 0) {
+			for (let i = 0; i < adjustedPixelsArr.length; i += 4) {
+				if (
+					adjustedPixelsArr[i] !== rgbaData[i] ||
+					adjustedPixelsArr[i + 1] !== rgbaData[i + 1] ||
+					adjustedPixelsArr[i + 2] !== rgbaData[i + 2]
+				) {
 					adjustedCount++;
 				}
 			}
+			const postTime = performance.now() - postStart;
+
+			const totalTime = performance.now() - totalStart;
+			const totalPixels = width * height;
+			const overheadTime = marshalTime + postTime;
+
+			// Record metrics
+			recordMetrics({
+				pipelineTimeMs: pipelineTime,
+				overheadTimeMs: overheadTime,
+				totalTimeMs: totalTime,
+				backend: 'futhark-webgpu',
+				width,
+				height,
+				totalPixels,
+				adjustedPixels: adjustedCount,
+				mpixPerSec: totalTime > 0 ? (totalPixels / totalTime) * 1000 / 1e6 : 0,
+				timestamp: performance.now()
+			});
 
 			return {
-				adjustedPixels,
+				adjustedPixels: adjustedPixelsArr,
 				adjustedCount,
-				processingTime,
+				processingTime: totalTime,
 				backend: 'futhark-webgpu'
 			};
 		} catch (err) {
@@ -486,11 +545,167 @@ export function createComputeDispatcher() {
 	}
 
 	/**
+	 * sRGB to linear conversion per WCAG 2.1 spec
+	 */
+	function sRGBtoLinear(c: number): number {
+		const s = c / 255;
+		return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+	}
+
+	/**
+	 * WCAG relative luminance from 8-bit RGB
+	 */
+	function relativeLuminance(r: number, g: number, b: number): number {
+		return 0.2126 * sRGBtoLinear(r) + 0.7152 * sRGBtoLinear(g) + 0.0722 * sRGBtoLinear(b);
+	}
+
+	/**
+	 * WCAG contrast ratio between two luminances
+	 */
+	function contrastRatio(l1: number, l2: number): number {
+		const lighter = Math.max(l1, l2);
+		const darker = Math.min(l1, l2);
+		return (lighter + 0.05) / (darker + 0.05);
+	}
+
+	/**
+	 * Run the contrast enhancement pipeline on CPU using ESDT results.
+	 *
+	 * Replicates the 6-pass Futhark pipeline:
+	 * 1. Grayscale + ESDT (via computeEsdt, which uses Futhark WASM or JS fallback)
+	 * 2. Glyph extraction (distance < maxDistance)
+	 * 3. Background sampling (along gradient direction)
+	 * 4. WCAG contrast check + color adjustment
+	 */
+	async function runFullPipelineCPU(
+		rgbaData: Uint8ClampedArray,
+		width: number,
+		height: number,
+		config: ComputeConfig
+	): Promise<PipelineResult> {
+		const startTime = performance.now();
+		const pixelCount = width * height;
+
+		// Pass 1: Convert RGBA to grayscale luminance levels
+		const levels = new Float32Array(pixelCount);
+		for (let i = 0; i < pixelCount; i++) {
+			const idx = i * 4;
+			const r = rgbaData[idx] / 255;
+			const g = rgbaData[idx + 1] / 255;
+			const b = rgbaData[idx + 2] / 255;
+			levels[i] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+		}
+
+		// Pass 2-3: ESDT (uses Futhark WASM if available, else JS fallback)
+		const esdt = await computeEsdt(levels, width, height, config);
+
+		// Pass 4: Extract glyph mask and compute adjustments
+		const adjustedPixels = new Uint8ClampedArray(rgbaData);
+		let adjustedCount = 0;
+
+		for (let y = 0; y < height; y++) {
+			for (let x = 0; x < width; x++) {
+				const i = y * width + x;
+				const esdtIdx = i * 2;
+				const dx = esdt.data[esdtIdx];
+				const dy = esdt.data[esdtIdx + 1];
+				const d = Math.sqrt(dx * dx + dy * dy);
+
+				// Glyph extraction: distance must be within threshold
+				const coverage = Math.max(0, Math.min(1, 1 - d / config.maxDistance));
+				if (d >= config.maxDistance || coverage <= 0.02) continue;
+
+				// Check gradient magnitude
+				const gradLen = d > 0.001 ? 1.0 : 0.0;
+				if (gradLen < 0.1) continue; // Solid interior pixel, skip
+
+				// Normalize gradient direction
+				const gx = dx / d;
+				const gy = dy / d;
+
+				// Pass 5: Sample background along gradient direction
+				const sx = Math.max(0, Math.min(width - 1, Math.round(x + gx * config.sampleDistance)));
+				const sy = Math.max(0, Math.min(height - 1, Math.round(y + gy * config.sampleDistance)));
+				const bgIdx = (sy * width + sx) * 4;
+				const bgR = rgbaData[bgIdx];
+				const bgG = rgbaData[bgIdx + 1];
+				const bgB = rgbaData[bgIdx + 2];
+
+				// Pass 6: WCAG contrast check
+				const pixIdx = i * 4;
+				const textR = rgbaData[pixIdx];
+				const textG = rgbaData[pixIdx + 1];
+				const textB = rgbaData[pixIdx + 2];
+
+				const textLum = relativeLuminance(textR, textG, textB);
+				const bgLum = relativeLuminance(bgR, bgG, bgB);
+				const cr = contrastRatio(textLum, bgLum);
+
+				if (cr >= config.targetContrast) continue; // Already compliant
+
+				// Adjust text color to meet target contrast
+				const textIsLighter = textLum > bgLum;
+				let targetLum: number;
+				if (textIsLighter) {
+					targetLum = Math.max(0, Math.min(1, config.targetContrast * (bgLum + 0.05) - 0.05));
+				} else {
+					targetLum = Math.max(0, Math.min(1, (bgLum + 0.05) / config.targetContrast - 0.05));
+				}
+
+				const currentLum = relativeLuminance(textR, textG, textB);
+				let newR: number, newG: number, newB: number;
+				if (currentLum < 0.001) {
+					// Near-black: make gray with target luminance
+					const gray = Math.sqrt(targetLum / 0.2126) * 255;
+					newR = newG = newB = Math.max(0, Math.min(255, Math.round(gray)));
+				} else {
+					const ratio = targetLum / currentLum;
+					newR = Math.max(0, Math.min(255, Math.round(textR * ratio)));
+					newG = Math.max(0, Math.min(255, Math.round(textG * ratio)));
+					newB = Math.max(0, Math.min(255, Math.round(textB * ratio)));
+				}
+
+				adjustedPixels[pixIdx] = newR;
+				adjustedPixels[pixIdx + 1] = newG;
+				adjustedPixels[pixIdx + 2] = newB;
+				// Alpha preserved from original
+				adjustedCount++;
+			}
+		}
+
+		const processingTime = performance.now() - startTime;
+		const backend: PipelineResult['backend'] = futharkContext ? 'futhark-wasm' : 'js-fallback';
+		const totalPixels = width * height;
+
+		// Record metrics (CPU path has no separate marshal overhead)
+		recordMetrics({
+			pipelineTimeMs: processingTime,
+			overheadTimeMs: 0,
+			totalTimeMs: processingTime,
+			backend,
+			width,
+			height,
+			totalPixels,
+			adjustedPixels: adjustedCount,
+			mpixPerSec: processingTime > 0 ? (totalPixels / processingTime) * 1000 / 1e6 : 0,
+			timestamp: performance.now()
+		});
+
+		return {
+			adjustedPixels,
+			adjustedCount,
+			processingTime,
+			backend
+		};
+	}
+
+	/**
 	 * Run the full contrast enhancement pipeline
 	 *
 	 * Backend selection:
 	 * 1. Futhark WebGPU (GPU, unified Futhark-generated shaders)
-	 * 2. CPU fallback (returns original data)
+	 * 2. Futhark WASM (multicore CPU, ESDT via WASM + contrast adjustment in JS)
+	 * 3. Pure JS fallback (single-threaded ESDT + contrast adjustment)
 	 */
 	async function runFullPipeline(
 		rgbaData: Uint8ClampedArray,
@@ -509,13 +724,31 @@ export function createComputeDispatcher() {
 			}
 		}
 
-		// Fall back to CPU processing
-		return {
-			adjustedPixels: new Uint8ClampedArray(rgbaData),
-			adjustedCount: 0,
-			processingTime: 0,
-			backend: futharkContext ? 'futhark-wasm' : 'js-fallback'
-		};
+		// Fall back to CPU processing (Futhark WASM for ESDT, or pure JS)
+		try {
+			return await runFullPipelineCPU(rgbaData, width, height, fullConfig);
+		} catch (err) {
+			console.error('[ComputeDispatcher] CPU pipeline failed:', err);
+			// Last resort: return original data unmodified
+			recordMetrics({
+				pipelineTimeMs: 0,
+				overheadTimeMs: 0,
+				totalTimeMs: 0,
+				backend: 'js-fallback',
+				width,
+				height,
+				totalPixels: width * height,
+				adjustedPixels: 0,
+				mpixPerSec: 0,
+				timestamp: performance.now()
+			});
+			return {
+				adjustedPixels: new Uint8ClampedArray(rgbaData),
+				adjustedCount: 0,
+				processingTime: 0,
+				backend: 'js-fallback'
+			};
+		}
 	}
 
 	/**
@@ -654,19 +887,65 @@ export function createComputeDispatcher() {
 	}
 
 	/**
+	 * Compute ESDT from RGBA pixel data using Futhark WebGPU
+	 *
+	 * Uses the debug_esdt_flat entry point which handles grayscale
+	 * conversion on the GPU, so it takes raw RGBA data.
+	 */
+	async function computeEsdtWebGPU(
+		rgbaData: Uint8ClampedArray,
+		width: number,
+		height: number,
+		maxDistance: number
+	): Promise<EsdtResult> {
+		if (!futharkWebGPUContext) {
+			throw new Error('Futhark WebGPU context not initialized');
+		}
+
+		const inputData = new Uint8Array(rgbaData);
+		const data = await futharkWebGPUContext.debugEsdtFlat(
+			inputData,
+			width,
+			height,
+			maxDistance
+		);
+		await futharkWebGPUContext.sync();
+
+		return { data, width, height };
+	}
+
+	/**
 	 * Compute ESDT from grayscale levels
 	 *
 	 * Backend selection order:
-	 * 1. Futhark WASM (if initialized)
-	 * 2. JS fallback
+	 * 1. Futhark WebGPU (if initialized and rgbaData provided)
+	 * 2. Futhark WASM (if initialized)
+	 * 3. JS fallback
+	 *
+	 * @param levels - Grayscale float levels (used by WASM and JS backends)
+	 * @param width - Image width
+	 * @param height - Image height
+	 * @param config - Compute configuration
+	 * @param rgbaData - Optional raw RGBA pixel data (enables WebGPU path)
 	 */
 	async function computeEsdt(
 		levels: Float32Array,
 		width: number,
 		height: number,
-		config: Partial<ComputeConfig> = {}
+		config: Partial<ComputeConfig> = {},
+		rgbaData?: Uint8ClampedArray
 	): Promise<EsdtResult> {
 		const { useRelaxation = DEFAULT_CONFIG.useRelaxation } = config;
+		const { maxDistance = DEFAULT_CONFIG.maxDistance } = config;
+
+		// Try Futhark WebGPU first (requires RGBA data)
+		if (futharkWebGPUContext && rgbaData) {
+			try {
+				return await computeEsdtWebGPU(rgbaData, width, height, maxDistance);
+			} catch (err) {
+				console.warn('[ComputeDispatcher] WebGPU ESDT failed, falling back:', err);
+			}
+		}
 
 		if (futharkContext) {
 			return computeEsdtFuthark(levels, width, height, useRelaxation);
@@ -742,6 +1021,27 @@ export function createComputeDispatcher() {
 		return false;
 	}
 
+	/**
+	 * Return the most recent pipeline metrics entry, or null if none recorded.
+	 */
+	function getLatestMetrics(): PipelineMetrics | null {
+		return metricsHistory.length > 0 ? metricsHistory[metricsHistory.length - 1] : null;
+	}
+
+	/**
+	 * Return a shallow copy of the full metrics history (oldest-first).
+	 */
+	function getMetricsHistory(): readonly PipelineMetrics[] {
+		return [...metricsHistory];
+	}
+
+	/**
+	 * Clear all recorded metrics.
+	 */
+	function clearMetrics() {
+		metricsHistory.length = 0;
+	}
+
 	return {
 		initialize,
 		computeEsdt,
@@ -752,6 +1052,9 @@ export function createComputeDispatcher() {
 		getGradient,
 		destroy,
 		switchBackend,
+		getLatestMetrics,
+		getMetricsHistory,
+		clearMetrics,
 		get isInitialized() {
 			return isInitialized;
 		},

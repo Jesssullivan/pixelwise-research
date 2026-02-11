@@ -1,4 +1,6 @@
 # Futhark ESDT Build Makefile
+# Kept for Nix CI builds (flake.nix buildPhase uses `make pipeline`)
+# For interactive development, use: just --list (all targets mirrored)
 # Requires: nix develop (provides futhark + emscripten)
 
 FUTHARK := futhark

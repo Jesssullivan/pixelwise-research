@@ -2,17 +2,22 @@
 	/**
 	 * GradientDirectionVisualizer - ESDT Gradient Direction Visualization
 	 *
-	 * This component uses the Futhark WASM module (esdt.fut) directly
-	 * to compute the Extended Signed Distance Transform.
+	 * Uses the ComputeDispatcher to run ESDT computation, with automatic
+	 * backend selection:
+	 *   1. Futhark WebGPU (GPU, via debug_esdt_flat entry point)
+	 *   2. Futhark WASM (multicore CPU)
+	 *   3. JS fallback (single-threaded)
 	 *
 	 * The ESDT algorithm uses 2D separable passes (X-pass + Y-pass)
 	 * to compute distance and gradient vectors to the nearest edge.
 	 *
+	 * @see futhark/pipeline.fut - debug_esdt_flat() entry point
 	 * @see futhark/esdt.fut - compute_esdt_2d() implementation
 	 */
 
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
+	import { createComputeDispatcher, type ComputeDispatcher } from '$lib/core/ComputeDispatcher';
 
 	// Props
 	interface Props {
@@ -22,20 +27,9 @@
 
 	let { initialText = 'Aa', showTiming = true }: Props = $props();
 
-	// Futhark context interface
-	interface FutharkContext {
-		new_f32_2d(data: Float32Array, rows: number, cols: number): FutharkArray;
-		compute_esdt_2d(input: FutharkArray, useRelaxation: boolean): FutharkArray;
-	}
-
-	interface FutharkArray {
-		toTypedArray(): Promise<Float32Array>;
-		free(): void;
-	}
-
-	// Futhark context
-	let futharkContext: FutharkContext | null = null;
-	let futharkReady = $state(false);
+	// Compute dispatcher (handles WebGPU -> WASM -> JS fallback)
+	let dispatcher: ComputeDispatcher | null = null;
+	let dispatcherReady = $state(false);
 
 	// Canvas refs
 	let textCanvas: HTMLCanvasElement | null = null;
@@ -53,35 +47,45 @@
 	let canvasWidth = $state(200);
 	let canvasHeight = $state(100);
 
+	// Backend indicator
+	let activeBackendLabel = $state('');
+
 	// ESDT data (flat array: [delta_x, delta_y, ...])
 	let esdtData: Float32Array | null = null;
 
-	// Initialize - try Futhark WASM, fall back to JS
-	let usingJsFallback = $state(false);
-
 	onMount(async () => {
+		dispatcher = createComputeDispatcher();
 		try {
-			const { newFutharkContext } = await import('$lib/futhark');
-			futharkContext = await newFutharkContext();
-			futharkReady = true;
+			await dispatcher.initialize();
+			dispatcherReady = true;
 			computeESDT();
 		} catch (error) {
-			console.warn('[GradientViz] Futhark initialization failed, using JS fallback:', error);
-			// Use JS fallback instead
-			futharkReady = true;
-			usingJsFallback = true;
+			console.warn('[GradientViz] Dispatcher initialization failed:', error);
+			// Dispatcher still provides JS fallback even if GPU/WASM fail
+			dispatcherReady = true;
 			computeESDT();
 		}
 	});
 
 	onDestroy(() => {
-		futharkContext = null;
+		if (dispatcher) {
+			dispatcher.destroy();
+			dispatcher = null;
+		}
 	});
 
 	/**
-	 * Render text to canvas and extract grayscale levels
+	 * Render text to canvas and extract pixel data
+	 *
+	 * Returns both grayscale levels (for WASM/JS path) and raw RGBA
+	 * pixels (for WebGPU path) to avoid redundant conversions.
 	 */
-	function renderTextToLevels(): { levels: Float32Array; width: number; height: number } | null {
+	function renderTextToData(): {
+		levels: Float32Array;
+		rgbaData: Uint8ClampedArray;
+		width: number;
+		height: number;
+	} | null {
 		if (!textCanvas) return null;
 
 		const ctx = textCanvas.getContext('2d', { willReadFrequently: true });
@@ -102,7 +106,7 @@
 		const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
 		const pixels = imageData.data;
 
-		// Convert to grayscale levels [0.0-1.0]
+		// Convert to grayscale levels [0.0-1.0] (needed for WASM/JS backends)
 		const levels = new Float32Array(canvasWidth * canvasHeight);
 		for (let i = 0; i < levels.length; i++) {
 			const r = pixels[i * 4];
@@ -114,7 +118,7 @@
 			levels[i] = 1.0 - luminance;
 		}
 
-		return { levels, width: canvasWidth, height: canvasHeight };
+		return { levels, rgbaData: pixels, width: canvasWidth, height: canvasHeight };
 	}
 
 	/**
@@ -209,124 +213,44 @@
 	}
 
 	/**
-	 * Pure JS ESDT fallback (simplified 2-pass algorithm)
-	 */
-	function computeEsdtFallback(levels: Float32Array, width: number, height: number): Float32Array {
-		const data = new Float32Array(width * height * 2);
-
-		// Initialize: foreground (level >= 0.5) = 0 distance, background = infinity
-		for (let i = 0; i < width * height; i++) {
-			if (levels[i] >= 0.5) {
-				data[i * 2] = 0;
-				data[i * 2 + 1] = 0;
-			} else {
-				data[i * 2] = 1e10;
-				data[i * 2 + 1] = 1e10;
-			}
-		}
-
-		// X-pass forward
-		for (let y = 0; y < height; y++) {
-			for (let x = 1; x < width; x++) {
-				const idx = (y * width + x) * 2;
-				const prevIdx = (y * width + x - 1) * 2;
-				const candX = data[prevIdx] + 1;
-				const candY = data[prevIdx + 1];
-				const candD2 = candX * candX + candY * candY;
-				const currD2 = data[idx] * data[idx] + data[idx + 1] * data[idx + 1];
-				if (candD2 < currD2) {
-					data[idx] = candX;
-					data[idx + 1] = candY;
-				}
-			}
-		}
-
-		// X-pass backward
-		for (let y = 0; y < height; y++) {
-			for (let x = width - 2; x >= 0; x--) {
-				const idx = (y * width + x) * 2;
-				const nextIdx = (y * width + x + 1) * 2;
-				const candX = data[nextIdx] - 1;
-				const candY = data[nextIdx + 1];
-				const candD2 = candX * candX + candY * candY;
-				const currD2 = data[idx] * data[idx] + data[idx + 1] * data[idx + 1];
-				if (candD2 < currD2) {
-					data[idx] = candX;
-					data[idx + 1] = candY;
-				}
-			}
-		}
-
-		// Y-pass forward
-		for (let x = 0; x < width; x++) {
-			for (let y = 1; y < height; y++) {
-				const idx = (y * width + x) * 2;
-				const prevIdx = ((y - 1) * width + x) * 2;
-				const candX = data[prevIdx];
-				const candY = data[prevIdx + 1] + 1;
-				const candD2 = candX * candX + candY * candY;
-				const currD2 = data[idx] * data[idx] + data[idx + 1] * data[idx + 1];
-				if (candD2 < currD2) {
-					data[idx] = candX;
-					data[idx + 1] = candY;
-				}
-			}
-		}
-
-		// Y-pass backward
-		for (let x = 0; x < width; x++) {
-			for (let y = height - 2; y >= 0; y--) {
-				const idx = (y * width + x) * 2;
-				const nextIdx = ((y + 1) * width + x) * 2;
-				const candX = data[nextIdx];
-				const candY = data[nextIdx + 1] - 1;
-				const candD2 = candX * candX + candY * candY;
-				const currD2 = data[idx] * data[idx] + data[idx + 1] * data[idx + 1];
-				if (candD2 < currD2) {
-					data[idx] = candX;
-					data[idx + 1] = candY;
-				}
-			}
-		}
-
-		return data;
-	}
-
-	/**
-	 * Compute ESDT and visualize
+	 * Compute ESDT via ComputeDispatcher and visualize
 	 */
 	async function computeESDT() {
-		if (!futharkReady) return;
+		if (!dispatcherReady || !dispatcher) return;
 
-		const data = renderTextToLevels();
+		const data = renderTextToData();
 		if (!data) return;
 
 		try {
 			const startTime = performance.now();
-			let resultData: Float32Array;
 
-			if (futharkContext && !usingJsFallback) {
-				// Use Futhark WASM
-				const levels2d = futharkContext.new_f32_2d(data.levels, data.height, data.width);
-				const result = futharkContext.compute_esdt_2d(levels2d, useRelaxation);
-				resultData = await result.toTypedArray();
-				result.free();
-				levels2d.free();
-			} else {
-				// Use JS fallback
-				resultData = computeEsdtFallback(data.levels, data.width, data.height);
-			}
+			// Pass both levels (for WASM/JS) and rgbaData (for WebGPU)
+			const result = await dispatcher.computeEsdt(
+				data.levels,
+				data.width,
+				data.height,
+				{ useRelaxation, maxDistance: 100 },
+				data.rgbaData
+			);
 
 			const elapsed = performance.now() - startTime;
 
-			esdtData = resultData;
+			esdtData = result.data;
 			pixelCount = data.width * data.height;
 			processingTimeMs = elapsed;
 
+			// Update backend label from dispatcher state
+			if (dispatcher.hasFutharkWebGPU) {
+				activeBackendLabel = 'Futhark WebGPU';
+			} else if (dispatcher.hasFuthark) {
+				activeBackendLabel = 'Futhark WASM';
+			} else {
+				activeBackendLabel = 'JS fallback';
+			}
+
 			visualizeGradients();
 
-			const backend = usingJsFallback ? 'JS fallback' : 'Futhark WASM';
-			console.log(`[GradientViz] compute_esdt_2d (${backend}): ${pixelCount} pixels in ${processingTimeMs.toFixed(2)}ms`);
+			console.log(`[GradientViz] computeEsdt (${activeBackendLabel}): ${pixelCount} pixels in ${processingTimeMs.toFixed(2)}ms`);
 		} catch (error) {
 			console.error('[GradientViz] ESDT computation failed:', error);
 		}
@@ -338,7 +262,7 @@
 		inputText;
 		useRelaxation;
 
-		if (futharkReady) {
+		if (dispatcherReady) {
 			computeESDT();
 		}
 	});
@@ -362,19 +286,24 @@
 			<h3 class="text-sm font-semibold text-surface-900-50 flex items-center gap-2">
 				<Icon icon="lucide:compass" width={16} />
 				ESDT Gradient Direction
-				<span class="text-xs font-mono text-primary-500">(futhark/esdt.fut)</span>
+				<span class="text-xs font-mono text-primary-500">(futhark/pipeline.fut)</span>
 			</h3>
 			<div class="flex items-center gap-2">
-				{#if futharkReady}
-					{#if usingJsFallback}
-						<span class="flex items-center gap-1 text-xs text-warning-500">
-							<Icon icon="lucide:cpu" width={12} />
-							JS Fallback
+				{#if dispatcherReady}
+					{#if activeBackendLabel === 'Futhark WebGPU'}
+						<span class="flex items-center gap-1 text-xs text-success-500">
+							<Icon icon="lucide:gpu" width={12} />
+							Futhark WebGPU
 						</span>
-					{:else}
+					{:else if activeBackendLabel === 'Futhark WASM'}
 						<span class="flex items-center gap-1 text-xs text-success-500">
 							<Icon icon="lucide:check" width={12} />
 							Futhark WASM
+						</span>
+					{:else}
+						<span class="flex items-center gap-1 text-xs text-warning-500">
+							<Icon icon="lucide:cpu" width={12} />
+							JS Fallback
 						</span>
 					{/if}
 				{:else}
@@ -469,7 +398,7 @@
 						Throughput: <span class="font-mono text-surface-900-50">{(pixelCount / processingTimeMs).toFixed(0)}</span> px/ms
 					</span>
 				</div>
-				<span class="font-mono text-primary-500">{usingJsFallback ? 'JS fallback' : 'esdt.fut'}</span>
+				<span class="font-mono text-primary-500">{activeBackendLabel || 'initializing'}</span>
 			</div>
 		</div>
 	{/if}

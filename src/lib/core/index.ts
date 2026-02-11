@@ -11,7 +11,7 @@ export { createViewportCapture } from './ViewportCapture';
 export type { ViewportCapture, CaptureOptions, CaptureResult, ViewportCaptureState } from './ViewportCapture';
 
 export { createComputeDispatcher, DEFAULT_CONFIG } from './ComputeDispatcher';
-export type { ComputeDispatcher, ComputeConfig, EsdtResult, PipelineResult, ComputeBackend } from './ComputeDispatcher';
+export type { ComputeDispatcher, ComputeConfig, EsdtResult, PipelineResult, PipelineMetrics, ComputeBackend } from './ComputeDispatcher';
 
 export { createOverlayCompositor } from './OverlayCompositor';
 export type { OverlayCompositor, OverlayConfig } from './OverlayCompositor';

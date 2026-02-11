@@ -19,7 +19,7 @@
  * Call .values() to read data back, .free() to release.
  */
 export interface FutharkArray {
-	values(): Promise<Uint8Array>;
+	values(): Promise<Uint8Array | Float32Array>;
 	free(): void;
 }
 
@@ -47,6 +47,25 @@ export interface FutharkWebGPUContext {
 		sampleDistance: number
 	): Promise<Uint8Array>;
 
+	/**
+	 * Compute ESDT from flat RGBA data (debug/visualization entry point).
+	 *
+	 * Returns per-pixel offset vectors [delta_x, delta_y, ...] as a flat
+	 * Float32Array of length width * height * 2.
+	 *
+	 * @param imageFlat - Flattened RGBA pixel data (width * height * 4 bytes)
+	 * @param width - Image width in pixels
+	 * @param height - Image height in pixels
+	 * @param maxDistance - Maximum ESDT search distance in pixels
+	 * @returns Flat Float32Array of [delta_x, delta_y, ...] per pixel
+	 */
+	debugEsdtFlat(
+		imageFlat: Uint8Array,
+		width: number,
+		height: number,
+		maxDistance: number
+	): Promise<Float32Array>;
+
 	/** Synchronize all pending GPU operations */
 	sync(): Promise<void>;
 
@@ -60,6 +79,9 @@ interface FutharkModuleInternal {
 	entry: Record<string, (...args: unknown[]) => Promise<[FutharkArray]>>;
 	u8_1d: {
 		from_data(data: Uint8Array, length: number): FutharkArray;
+	};
+	f32_1d: {
+		from_data(data: Float32Array, length: number): FutharkArray;
 	};
 	context_sync(): Promise<void>;
 	free(): void;
@@ -159,7 +181,38 @@ function createContext(fut: FutharkModuleInternal): FutharkWebGPUContext {
 				);
 
 				// Read result data back from GPU/WASM memory
-				const resultData = await resultArray.values();
+				const resultData = (await resultArray.values()) as Uint8Array;
+
+				// Free the result array (input is freed in finally)
+				resultArray.free();
+
+				return resultData;
+			} finally {
+				inputArray.free();
+			}
+		},
+
+		async debugEsdtFlat(
+			imageFlat: Uint8Array,
+			width: number,
+			height: number,
+			maxDistance: number
+		): Promise<Float32Array> {
+			// Create Futhark input array from raw pixel data
+			const inputArray = fut.u8_1d.from_data(imageFlat, imageFlat.length);
+
+			try {
+				// Call the Futhark entry point
+				// i64 params must be BigInt, f32 params are plain numbers
+				const [resultArray] = await fut.entry['debug_esdt_flat'](
+					inputArray,
+					BigInt(width),
+					BigInt(height),
+					maxDistance
+				);
+
+				// Read result data back from GPU/WASM memory
+				const resultData = (await resultArray.values()) as Float32Array;
 
 				// Free the result array (input is freed in finally)
 				resultArray.free();
