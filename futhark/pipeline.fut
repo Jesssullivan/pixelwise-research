@@ -238,6 +238,29 @@ entry debug_esdt [h][w] (image: [h][w]rgba) (max_distance: f32): []f32 =
   let esdt = pass_esdt levels cfg
   in flatten (map (map (\p -> [p.delta_x, p.delta_y])) esdt) |> flatten
 
+-- Compute ESDT from flat RGBA array (for WebGPU gradient visualization)
+-- Same as debug_esdt but accepts flat u8 RGBA input (no opaque type construction needed)
+-- Input: [h*w*4] u8 as [r, g, b, a, r, g, b, a, ...]
+-- Output: [h*w*2] f32 as [delta_x, delta_y, delta_x, delta_y, ...]
+entry debug_esdt_flat [n]
+    (image_flat: [n]u8)
+    (width: i64) (height: i64)
+    (max_distance: f32): []f32 =
+  let image_2d: [height][width]rgba =
+    tabulate_2d height width (\y x ->
+      let idx = (y * width + x) * 4
+      in {
+        r = image_flat[idx],
+        g = image_flat[idx + 1],
+        b = image_flat[idx + 2],
+        a = image_flat[idx + 3]
+      }
+    )
+  let levels = pass_grayscale image_2d
+  let cfg = {max_distance, target_contrast = 7f32, sample_distance = 5f32, use_relaxation = false}
+  let esdt = pass_esdt levels cfg
+  in flatten (map (map (\p -> [p.delta_x, p.delta_y])) esdt) |> flatten
+
 -- Tests
 
 -- ==

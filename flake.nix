@@ -18,9 +18,18 @@
       url = "github:nlewo/nix2container";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Custom Futhark with WebGPU backend (upstream diku-dk/futhark webgpu branch)
+    # Patches from jesssullivan/futhark were merged upstream.
+    # Old fork ref (kept for mirror): url = "github:jesssullivan/futhark/development-webgpu";
+    # For local dev: nix develop .#futhark-webgpu --override-input futhark-webgpu-src path:../futhark
+    futhark-webgpu-src = {
+      url = "github:diku-dk/futhark/webgpu";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, nix2container }:
+  outputs = { self, nixpkgs, flake-utils, nix2container, futhark-webgpu-src }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -81,11 +90,9 @@
           '';
         };
 
-        # Development shell with custom Futhark WebGPU backend (PR #2140)
-        # Build instructions:
-        #   1. Clone: git clone https://github.com/diku-dk/futhark.git ~/git/futhark-webgpu
-        #   2. Checkout PR: cd ~/git/futhark-webgpu && git fetch origin pull/2140/head:webgpu-pr2140 && git checkout webgpu-pr2140
-        #   3. Build: cabal build && cabal install --installdir=$HOME/.local/futhark-webgpu/bin
+        # Development shell with custom Futhark WebGPU backend (diku-dk/futhark webgpu branch)
+        # Uses flake input futhark-webgpu-src for source location
+        # Override for local dev: nix develop .#futhark-webgpu --override-input futhark-webgpu-src path:../futhark
         devShells.futhark-webgpu = pkgs.mkShell {
           packages = with pkgs; [
             # Build system
@@ -129,8 +136,11 @@
             echo "================================================"
             echo ""
 
+            # Point to Futhark source from flake input (or local override)
+            export FUTHARK_SRC="${futhark-webgpu-src}"
+            export FUTHARK_WEBGPU="$HOME/.local/futhark-webgpu/bin/futhark"
+
             # Check for custom Futhark WebGPU binary
-            FUTHARK_WEBGPU="$HOME/.local/futhark-webgpu/bin/futhark"
             if [ -x "$FUTHARK_WEBGPU" ]; then
               export PATH="$HOME/.local/futhark-webgpu/bin:$PATH"
               echo "Using custom Futhark WebGPU: $($FUTHARK_WEBGPU --version 2>&1 | head -n1)"
@@ -140,11 +150,9 @@
               echo "WARNING: Custom Futhark WebGPU not found at $FUTHARK_WEBGPU"
               echo ""
               echo "To build Futhark with WebGPU support:"
-              echo "  1. cd ~/git/futhark-webgpu"
-              echo "  2. git fetch origin pull/2140/head:webgpu-pr2140"
-              echo "  3. git checkout webgpu-pr2140"
-              echo "  4. cabal build"
-              echo "  5. cabal install --installdir=$HOME/.local/futhark-webgpu/bin"
+              echo "  just futhark-webgpu-build"
+              echo ""
+              echo "Source available at: $FUTHARK_SRC"
               echo ""
             fi
 
@@ -158,7 +166,7 @@
             echo "  cabal     - $(cabal --version 2>&1 | head -n1)"
             echo ""
             echo "Futhark WebGPU commands:"
-            echo "  just futhark-webgpu-build     - Build custom Futhark"
+            echo "  just futhark-webgpu-build     - Build custom Futhark from $FUTHARK_SRC"
             echo "  just futhark-webgpu-compile   - Compile pipeline to WebGPU"
             echo "  just test-webgpu-equivalence  - Run equivalence tests"
             echo ""

@@ -22,13 +22,14 @@
 		</div>
 
 		<!-- Status Banner -->
-		<div class="mb-8 bg-warning-500/10 border border-warning-500/30 rounded-lg p-4">
+		<div class="mb-8 bg-success-500/10 border border-success-500/30 rounded-lg p-4">
 			<div class="flex items-start gap-3">
-				<svg class="w-5 h-5 text-warning-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+				<svg class="w-5 h-5 text-success-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
 				</svg>
 				<div class="text-sm text-surface-700-200">
-					<strong class="text-warning-500">Simulated Data:</strong> This demo currently displays simulated performance metrics. Real pipeline profiling requires WebGPU integration.
+					<strong class="text-success-500">Live Instrumentation:</strong> This demo runs the real ESDT contrast enhancement pipeline on a synthetic test image.
+					Timing is measured with <code class="font-mono text-xs">performance.now()</code> around actual Futhark pipeline calls.
 				</div>
 			</div>
 		</div>
@@ -73,10 +74,8 @@
 				<ul class="space-y-1">
 					<li><strong class="text-surface-800-100">FPS:</strong> 30+ frames per second (smooth animation)</li>
 					<li><strong class="text-surface-800-100">Frame Time:</strong> &lt;33ms total pipeline execution</li>
-					<li>
-						<strong class="text-surface-800-100">Cache Hit Rate:</strong> &gt;90% (reduces redundant background sampling)
-					</li>
-					<li><strong class="text-surface-800-100">Violations:</strong> Minimize WCAG contrast failures detected per frame</li>
+					<li><strong class="text-surface-800-100">Throughput:</strong> &gt;50 Mpix/s on WebGPU, &gt;5 Mpix/s on WASM</li>
+					<li><strong class="text-surface-800-100">Adjusted Pixels:</strong> Pixels corrected per frame to meet WCAG contrast ratio</li>
 				</ul>
 			</div>
 		</div>
@@ -89,15 +88,17 @@
 			<h3 class="text-lg font-semibold text-primary-500 mb-2">Implementation Notes</h3>
 			<div class="text-sm text-surface-700-200 space-y-2">
 				<p>
-					<strong class="text-primary-500">Note:</strong> This demo currently uses simulated performance data. The real pipeline
-					will integrate with:
+					<strong class="text-primary-500">How it works:</strong> The benchmark initializes a
+					<code class="font-mono text-xs">ComputeDispatcher</code>, generates a synthetic test image at the
+					selected resolution, and runs the full 6-pass ESDT pipeline in a
+					<code class="font-mono text-xs">requestAnimationFrame</code> loop.
 				</p>
 				<ul class="list-disc list-inside ml-4 space-y-1">
-					<li>Futhark WASM multicore for parallel ESDT computation</li>
-					<li>WebGL2 for overlay rendering</li>
-					<li>LRU background color cache to minimize DOM sampling</li>
-					<li>RequestAnimationFrame timing for accurate FPS measurement</li>
-					<li>Performance.now() for high-resolution stage profiling</li>
+					<li>Futhark WebGPU (preferred) or Futhark WASM multicore, with JS fallback</li>
+					<li>Pipeline timing via <code class="font-mono text-xs">performance.now()</code> around Futhark calls + GPU sync</li>
+					<li>Data-transfer overhead measured separately (TypedArray copies, pixel counting)</li>
+					<li>FPS derived from <code class="font-mono text-xs">PipelineMetrics</code> timestamp history (30-frame window)</li>
+					<li>Per-pass breakdown requires a dedicated Futhark entry point (not yet exposed)</li>
 				</ul>
 			</div>
 		</div>
