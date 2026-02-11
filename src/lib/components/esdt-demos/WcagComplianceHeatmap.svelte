@@ -25,15 +25,15 @@
 
 	let { initialText = 'Sample', showTiming = true }: Props = $props();
 
-	let dispatcher: ComputeDispatcher | null = null;
+	let dispatcher: ComputeDispatcher | null = $state(null);
 	let available = $state(false);
 
 	// Canvas refs
-	let textCanvas: HTMLCanvasElement | null = null;
-	let heatmapCanvas: HTMLCanvasElement | null = null;
+	let textCanvas = $state<HTMLCanvasElement | null>(null);
+	let heatmapCanvas = $state<HTMLCanvasElement | null>(null);
 
-	// State
-	let inputText = $state(initialText);
+	// State (inputText initialized from prop, user edits locally)
+	let inputText = $state(initialText ?? 'Sample');
 	let targetContrast = $state(7.0);
 	let processingTimeMs = $state(0);
 	let pixelCount = $state(0);
@@ -97,11 +97,9 @@
 			const ctx = heatmapCanvas.getContext('2d');
 			if (!ctx) return;
 
-			const imageData = new ImageData(
-				new Uint8ClampedArray(result.buffer, result.byteOffset, result.byteLength),
-				canvasWidth,
-				canvasHeight
-			);
+			const clampedArr = new Uint8ClampedArray(result.length);
+			clampedArr.set(result);
+			const imageData = new ImageData(clampedArr, canvasWidth, canvasHeight);
 			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 			ctx.putImageData(imageData, 0, 0);
 		} catch (error: unknown) {
@@ -145,16 +143,18 @@
 			<!-- Controls -->
 			<div class="flex items-center gap-4">
 				<div class="flex items-center gap-2">
-					<label class="text-sm text-surface-700-200 w-20">Text</label>
+					<label for="wcag-heatmap-text" class="text-sm text-surface-700-200 w-20">Text</label>
 					<input
+						id="wcag-heatmap-text"
 						type="text"
 						bind:value={inputText}
 						class="px-3 py-1.5 rounded bg-surface-100-800 border border-surface-300-600 text-surface-900-50 font-mono text-sm w-32"
 					/>
 				</div>
 				<div class="flex items-center gap-2">
-					<label class="text-sm text-surface-700-200">Target CR:</label>
+					<label for="wcag-heatmap-cr" class="text-sm text-surface-700-200">Target CR:</label>
 					<select
+						id="wcag-heatmap-cr"
 						bind:value={targetContrast}
 						class="px-2 py-1.5 rounded bg-surface-100-800 border border-surface-300-600 text-surface-900-50 text-sm"
 					>

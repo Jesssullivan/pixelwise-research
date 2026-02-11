@@ -289,7 +289,7 @@ export function createWebGPUOverlayCompositor() {
 
 		gpuState.device.queue.writeTexture(
 			{ texture: gpuState.texture },
-			pixels,
+			pixels as unknown as ArrayBuffer,
 			{ bytesPerRow: width * 4, rowsPerImage: height },
 			{ width, height }
 		);
@@ -306,7 +306,7 @@ export function createWebGPUOverlayCompositor() {
 
 		gpuState.device.queue.writeTexture(
 			{ texture: gpuState.texture },
-			data,
+			data as unknown as ArrayBuffer,
 			{ bytesPerRow: width * 4, rowsPerImage: height },
 			{ width, height }
 		);

@@ -28,12 +28,12 @@
 	let { initialText = 'Aa', showTiming = true }: Props = $props();
 
 	// Compute dispatcher (handles WebGPU -> WASM -> JS fallback)
-	let dispatcher: ComputeDispatcher | null = null;
+	let dispatcher: ComputeDispatcher | null = $state(null);
 	let dispatcherReady = $state(false);
 
 	// Canvas refs
-	let textCanvas: HTMLCanvasElement | null = null;
-	let vectorCanvas: HTMLCanvasElement | null = null;
+	let textCanvas = $state<HTMLCanvasElement | null>(null);
+	let vectorCanvas = $state<HTMLCanvasElement | null>(null);
 
 	// Visualization modes
 	type VizMode = 'gradient-arrows' | 'distance-heatmap' | 'glyph-mask';
@@ -248,11 +248,9 @@
 			pixelCount = data.width * data.height;
 
 			// Render to canvas
-			const imageData = new ImageData(
-				new Uint8ClampedArray(resultRgba.buffer, resultRgba.byteOffset, resultRgba.byteLength),
-				data.width,
-				data.height
-			);
+			const clampedArr = new Uint8ClampedArray(resultRgba.length);
+			clampedArr.set(resultRgba);
+			const imageData = new ImageData(clampedArr, data.width, data.height);
 			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 			ctx.putImageData(imageData, 0, 0);
 
@@ -376,8 +374,9 @@
 	<div class="p-4 space-y-4">
 		<!-- Text Input -->
 		<div class="flex items-center gap-3">
-			<label class="text-sm text-surface-700-200 w-20">Text</label>
+			<label for="gradient-viz-text" class="text-sm text-surface-700-200 w-20">Text</label>
 			<input
+				id="gradient-viz-text"
 				type="text"
 				bind:value={inputText}
 				class="flex-1 px-3 py-2 rounded bg-surface-100-800 border border-surface-300-600 text-surface-900-50 font-mono"
@@ -387,8 +386,9 @@
 
 		<!-- Visualization Mode -->
 		<div class="flex items-center gap-3">
-			<label class="text-sm text-surface-700-200 w-20">Mode</label>
+			<label for="gradient-viz-mode" class="text-sm text-surface-700-200 w-20">Mode</label>
 			<select
+				id="gradient-viz-mode"
 				bind:value={vizMode}
 				class="flex-1 px-3 py-2 rounded bg-surface-100-800 border border-surface-300-600 text-surface-900-50 text-sm"
 			>

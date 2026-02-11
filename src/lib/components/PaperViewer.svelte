@@ -18,7 +18,8 @@
 	let { collapsed = true, maxHeight = '50vh' }: Props = $props();
 
 	const PDF_PATH = '/tex_research/pixelwise/dist/pixelwise.pdf';
-	let expanded = $state(!collapsed);
+	let expandedOverride = $state<boolean | null>(null);
+	let expanded = $derived(expandedOverride ?? !collapsed);
 	let pdfAvailable = $state<boolean | null>(null);
 
 	// Check if PDF exists
@@ -36,7 +37,7 @@
 	<button
 		type="button"
 		class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-surface-100-800 transition-colors"
-		onclick={() => expanded = !expanded}
+		onclick={() => expandedOverride = !expanded}
 	>
 		<div class="flex items-center gap-2">
 			<svg class="h-5 w-5 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">

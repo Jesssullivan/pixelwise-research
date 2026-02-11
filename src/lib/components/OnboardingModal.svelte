@@ -101,9 +101,11 @@
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
 		onclick={handleBackdropClick}
+		onkeydown={handleKeydown}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="onboarding-title"
+		tabindex="-1"
 	>
 		<div class="relative w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-xl bg-surface-50-900 shadow-2xl flex flex-col">
 			<!-- Header -->
