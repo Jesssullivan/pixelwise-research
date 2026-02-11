@@ -2,7 +2,8 @@
 	import { browser } from '$app/environment';
 	import WebGPUInstructions from './WebGPUInstructions.svelte';
 	import PaperViewer from './PaperViewer.svelte';
-	import { completeOnboarding } from '$lib/utils/consentStorage';
+	import MobileWarning from './MobileWarning.svelte';
+	import { completeOnboarding, setConsent, getConsent } from '$lib/utils/consentStorage';
 	import { useWebGPUStatus } from '$lib/composables/useWebGPUStatus.svelte';
 
 	interface Props {
@@ -12,39 +13,91 @@
 
 	let { onClose }: Props = $props();
 
+	const TOTAL_STEPS = 5;
 	let isOpen = $state(true);
-	let dontShowAgain = $state(true); // Default to checked
-	let activeSection = $state<'webgpu' | 'capture' | 'paper'>('webgpu');
+	let currentStep = $state(1);
+	let dontShowAgain = $state(true);
+	let screenCaptureTestResult = $state<'untested' | 'testing' | 'granted' | 'denied'>('untested');
 
-	// Use the reactive WebGPU status hook
 	const webgpu = useWebGPUStatus();
 
-	function handleContinue() {
+	// Track completed steps
+	let completedSteps = $state<Set<number>>(new Set());
+
+	function markStepCompleted(step: number) {
+		completedSteps.add(step);
+		setConsent({ completedSteps: [...completedSteps] });
+	}
+
+	function goToStep(step: number) {
+		if (step < 1 || step > TOTAL_STEPS) return;
+		markStepCompleted(currentStep);
+		currentStep = step;
+	}
+
+	function nextStep() {
+		if (currentStep < TOTAL_STEPS) {
+			goToStep(currentStep + 1);
+		}
+	}
+
+	function prevStep() {
+		if (currentStep > 1) {
+			goToStep(currentStep - 1);
+		}
+	}
+
+	function handleFinish() {
+		markStepCompleted(currentStep);
 		if (dontShowAgain) {
 			completeOnboarding();
 		}
+		setConsent({
+			detectedBackend: webgpu.available ? 'webgpu' : webgpu.fallbackMode,
+			screenCaptureGranted: screenCaptureTestResult === 'granted'
+		});
 		isOpen = false;
 		onClose?.();
 	}
 
 	function handleBackdropClick(event: MouseEvent) {
-		// Only close if clicking the backdrop itself, not the modal content
 		if (event.target === event.currentTarget) {
-			handleContinue();
+			handleFinish();
 		}
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.key === 'Escape') {
-			handleContinue();
+			handleFinish();
+		} else if (event.key === 'ArrowRight' || (event.key === 'Enter' && currentStep < TOTAL_STEPS)) {
+			nextStep();
+		} else if (event.key === 'ArrowLeft') {
+			prevStep();
 		}
 	}
+
+	async function testScreenCapture() {
+		screenCaptureTestResult = 'testing';
+		const granted = await webgpu.testScreenCapture();
+		screenCaptureTestResult = granted ? 'granted' : 'denied';
+	}
+
+	async function recheckWebGPU() {
+		await webgpu.redetect();
+	}
+
+	// Derive the performance tier label
+	const performanceTier = $derived.by(() => {
+		if (webgpu.available) return 'GPU Accelerated (WebGPU)';
+		if (webgpu.fallbackMode === 'wasm-multicore') return 'CPU Multicore (Futhark WASM)';
+		if (webgpu.fallbackMode === 'js-fallback') return 'CPU Single-thread (JS)';
+		return 'Unknown';
+	});
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
 {#if isOpen}
-	<!-- Backdrop -->
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
 		onclick={handleBackdropClick}
@@ -52,22 +105,31 @@
 		aria-modal="true"
 		aria-labelledby="onboarding-title"
 	>
-		<!-- Modal -->
 		<div class="relative w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-xl bg-surface-50-900 shadow-2xl flex flex-col">
 			<!-- Header -->
 			<div class="flex items-center justify-between border-b border-surface-200-700 px-6 py-4">
 				<div>
 					<h2 id="onboarding-title" class="text-xl font-bold text-surface-900-50">
-						Welcome to Pixelwise
+						{#if currentStep === 1}
+							Welcome to Pixelwise
+						{:else if currentStep === 2}
+							WebGPU Check
+						{:else if currentStep === 3}
+							Screen Capture
+						{:else if currentStep === 4}
+							Research Paper
+						{:else}
+							Ready
+						{/if}
 					</h2>
 					<p class="mt-1 text-sm text-surface-600-300">
-						WebGPU + Futhark WASM multicore compositor for WCAG contrast
+						Step {currentStep} of {TOTAL_STEPS}
 					</p>
 				</div>
 				<button
 					type="button"
 					class="rounded-lg p-2 text-surface-500-400 transition-colors hover:bg-surface-100-800"
-					onclick={handleContinue}
+					onclick={handleFinish}
 					aria-label="Close"
 				>
 					<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -76,47 +138,57 @@
 				</button>
 			</div>
 
-			<!-- Tab Navigation -->
-			<div class="flex border-b border-surface-200-700">
-				<button
-					type="button"
-					class="flex-1 px-4 py-3 text-sm font-medium transition-colors
-						{activeSection === 'webgpu'
-							? 'border-b-2 border-primary-500 text-primary-500'
-							: 'text-surface-600-300 hover:text-surface-900-50'}"
-					onclick={() => activeSection = 'webgpu'}
-				>
-					WebGPU Status
-				</button>
-				<button
-					type="button"
-					class="flex-1 px-4 py-3 text-sm font-medium transition-colors
-						{activeSection === 'capture'
-							? 'border-b-2 border-primary-500 text-primary-500'
-							: 'text-surface-600-300 hover:text-surface-900-50'}"
-					onclick={() => activeSection = 'capture'}
-				>
-					Screen Capture
-				</button>
-				<button
-					type="button"
-					class="flex-1 px-4 py-3 text-sm font-medium transition-colors
-						{activeSection === 'paper'
-							? 'border-b-2 border-primary-500 text-primary-500'
-							: 'text-surface-600-300 hover:text-surface-900-50'}"
-					onclick={() => activeSection = 'paper'}
-				>
-					Research Paper
-				</button>
+			<!-- Progress Indicator -->
+			<div class="flex gap-1 px-6 pt-3">
+				{#each Array(TOTAL_STEPS) as _, i}
+					<button
+						type="button"
+						class="h-1.5 flex-1 rounded-full transition-colors {i + 1 === currentStep
+							? 'bg-primary-500'
+							: i + 1 < currentStep || completedSteps.has(i + 1)
+								? 'bg-primary-500/40'
+								: 'bg-surface-200-700'}"
+						onclick={() => goToStep(i + 1)}
+						aria-label="Go to step {i + 1}"
+					></button>
+				{/each}
 			</div>
 
-			<!-- Body - Scrollable -->
+			<!-- Body -->
 			<div class="flex-1 overflow-y-auto p-6">
-				{#if activeSection === 'webgpu'}
-					<!-- WebGPU Section -->
+				{#if currentStep === 1}
+					<!-- Step 1: Welcome + Platform Detection -->
 					<div class="space-y-4">
 						<p class="text-sm text-surface-700-200">
-							Pixelwise uses WebGPU for real-time WCAG contrast analysis. Check your browser's compatibility below.
+							Pixelwise is an experimental WCAG contrast enhancement compositor powered by Futhark WebGPU.
+							This wizard will check your browser's compatibility and walk you through the setup.
+						</p>
+
+						<!-- Platform Info -->
+						<div class="rounded-lg border border-surface-300-600 bg-surface-100-800 p-4">
+							<h4 class="mb-2 text-sm font-semibold text-surface-900-50">Detected Platform</h4>
+							<div class="grid grid-cols-2 gap-2 text-xs">
+								<div class="flex items-center gap-2">
+									<span class="text-surface-500-400">Browser:</span>
+									<span class="font-mono text-surface-900-50">{webgpu.browserName} {webgpu.browserVersion}</span>
+								</div>
+								<div class="flex items-center gap-2">
+									<span class="text-surface-500-400">OS:</span>
+									<span class="font-mono text-surface-900-50">{webgpu.platform}</span>
+								</div>
+							</div>
+						</div>
+
+						{#if webgpu.isMobile}
+							<MobileWarning />
+						{/if}
+					</div>
+
+				{:else if currentStep === 2}
+					<!-- Step 2: WebGPU Check -->
+					<div class="space-y-4">
+						<p class="text-sm text-surface-700-200">
+							Pixelwise uses WebGPU for real-time ESDT and WCAG contrast analysis on the GPU.
 						</p>
 
 						{#if webgpu.isDetecting}
@@ -128,50 +200,40 @@
 								<span class="text-sm">Detecting WebGPU capabilities...</span>
 							</div>
 						{:else if webgpu.capabilities}
-							<WebGPUInstructions capabilities={webgpu.capabilities} />
+							<WebGPUInstructions capabilities={webgpu.capabilities} onRecheck={recheckWebGPU} />
 						{/if}
 
-						<!-- Additional capability indicators -->
+						<!-- Capability Grid -->
 						{#if webgpu.capabilities}
-							<div class="mt-4 grid grid-cols-2 gap-2 text-xs">
+							<div class="grid grid-cols-2 gap-2 text-xs">
 								<div class="flex items-center gap-2 rounded-lg bg-surface-100-800 px-3 py-2">
-									{#if webgpu.capabilities.wasm}
-										<span class="h-2 w-2 rounded-full bg-success-500"></span>
-									{:else}
-										<span class="h-2 w-2 rounded-full bg-error-500"></span>
-									{/if}
+									<span class="h-2 w-2 rounded-full {webgpu.capabilities.wasm ? 'bg-success-500' : 'bg-error-500'}"></span>
 									<span class="text-surface-700-200">WebAssembly</span>
 								</div>
 								<div class="flex items-center gap-2 rounded-lg bg-surface-100-800 px-3 py-2">
-									{#if webgpu.capabilities.sharedArrayBuffer}
-										<span class="h-2 w-2 rounded-full bg-success-500"></span>
-									{:else}
-										<span class="h-2 w-2 rounded-full bg-warning-500"></span>
-									{/if}
+									<span class="h-2 w-2 rounded-full {webgpu.capabilities.sharedArrayBuffer ? 'bg-success-500' : 'bg-warning-500'}"></span>
 									<span class="text-surface-700-200">SharedArrayBuffer</span>
 								</div>
 								<div class="flex items-center gap-2 rounded-lg bg-surface-100-800 px-3 py-2">
-									{#if webgpu.capabilities.screenCapture}
-										<span class="h-2 w-2 rounded-full bg-success-500"></span>
-									{:else}
-										<span class="h-2 w-2 rounded-full bg-error-500"></span>
-									{/if}
+									<span class="h-2 w-2 rounded-full {webgpu.capabilities.screenCapture ? 'bg-success-500' : 'bg-error-500'}"></span>
 									<span class="text-surface-700-200">Screen Capture API</span>
 								</div>
 								<div class="flex items-center gap-2 rounded-lg bg-surface-100-800 px-3 py-2">
-									{#if webgpu.capabilities.offscreenCanvas}
-										<span class="h-2 w-2 rounded-full bg-success-500"></span>
-									{:else}
-										<span class="h-2 w-2 rounded-full bg-warning-500"></span>
-									{/if}
+									<span class="h-2 w-2 rounded-full {webgpu.capabilities.offscreenCanvas ? 'bg-success-500' : 'bg-warning-500'}"></span>
 									<span class="text-surface-700-200">OffscreenCanvas</span>
 								</div>
 							</div>
 						{/if}
+
+						{#if !webgpu.available && !webgpu.isDetecting}
+							<div class="rounded-lg bg-surface-100-800 p-3 text-sm text-surface-600-300">
+								You can continue without WebGPU - the demo will use CPU-based processing (Futhark WASM).
+							</div>
+						{/if}
 					</div>
 
-				{:else if activeSection === 'capture'}
-					<!-- Screen Capture Section -->
+				{:else if currentStep === 3}
+					<!-- Step 3: Screen Capture -->
 					<div class="space-y-4">
 						<div class="rounded-lg border border-surface-300-600 bg-surface-100-800 p-4">
 							<h4 class="mb-2 flex items-center gap-2 font-semibold text-surface-900-50">
@@ -201,49 +263,169 @@
 							</ul>
 						</div>
 
-						<div class="rounded-lg border border-warning-500/30 bg-warning-500/10 p-4">
-							<h4 class="mb-2 flex items-center gap-2 font-semibold text-warning-700 dark:text-warning-400">
-								<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-								</svg>
-								Permission Required
-							</h4>
-							<p class="text-sm text-surface-700-200">
-								When you start the compositor, your browser will ask for screen capture permission.
-								You'll need to select this tab/window for the demo to work.
+						<!-- Test Permission Button -->
+						<div class="flex flex-col items-center gap-2 rounded-lg border border-surface-300-600 bg-surface-50-900 p-4">
+							{#if screenCaptureTestResult === 'untested'}
+								<p class="text-sm text-surface-700-200">Test screen capture permission now (optional):</p>
+								<button
+									type="button"
+									class="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 transition-colors"
+									onclick={testScreenCapture}
+								>
+									<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+									</svg>
+									Test Permission
+								</button>
+							{:else if screenCaptureTestResult === 'testing'}
+								<div class="flex items-center gap-2">
+									<svg class="h-5 w-5 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
+										<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+										<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+									</svg>
+									<span class="text-sm">Requesting permission...</span>
+								</div>
+							{:else if screenCaptureTestResult === 'granted'}
+								<div class="flex items-center gap-2 text-success-500">
+									<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+									</svg>
+									<span class="text-sm font-medium">Screen capture permission granted</span>
+								</div>
+							{:else}
+								<div class="flex items-center gap-2 text-warning-500">
+									<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+									</svg>
+									<span class="text-sm">Permission denied or cancelled</span>
+								</div>
+								<button
+									type="button"
+									class="text-xs text-primary-500 hover:underline"
+									onclick={testScreenCapture}
+								>
+									Try again
+								</button>
+							{/if}
+							<p class="text-xs text-surface-500-400 text-center">
+								You'll be asked again when starting the compositor if you skip this.
 							</p>
 						</div>
 					</div>
 
-				{:else if activeSection === 'paper'}
-					<!-- Research Paper Section -->
+				{:else if currentStep === 4}
+					<!-- Step 4: Research Paper (optional) -->
 					<div class="space-y-4">
 						<p class="text-sm text-surface-700-200">
 							Learn about the Extended Signed Distance Transform (ESDT) algorithm, the 6-pass
 							WebGPU pipeline, and how Pixelwise achieves WCAG-compliant text contrast enhancement.
 						</p>
 						<PaperViewer collapsed={false} maxHeight="45vh" />
+						<p class="text-xs text-surface-500-400 text-center">
+							This step is optional. You can view the paper later from the main page.
+						</p>
+					</div>
+
+				{:else if currentStep === 5}
+					<!-- Step 5: Ready -->
+					<div class="space-y-4">
+						<div class="rounded-lg border border-success-500/30 bg-success-500/10 p-4">
+							<h4 class="mb-3 flex items-center gap-2 font-semibold text-success-700 dark:text-success-400">
+								<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+								</svg>
+								Setup Complete
+							</h4>
+							<div class="space-y-2 text-sm text-surface-700-200">
+								<div class="flex items-center justify-between">
+									<span>Backend:</span>
+									<span class="font-mono text-surface-900-50">{performanceTier}</span>
+								</div>
+								<div class="flex items-center justify-between">
+									<span>WebGPU:</span>
+									<span class="font-mono {webgpu.available ? 'text-success-500' : 'text-warning-500'}">
+										{webgpu.available ? 'Available' : 'Using fallback'}
+									</span>
+								</div>
+								{#if webgpu.adapter}
+									<div class="flex items-center justify-between">
+										<span>GPU:</span>
+										<span class="font-mono text-surface-900-50 text-xs">{webgpu.adapter}</span>
+									</div>
+								{/if}
+								<div class="flex items-center justify-between">
+									<span>Screen Capture:</span>
+									<span class="font-mono {screenCaptureTestResult === 'granted' ? 'text-success-500' : 'text-surface-500-400'}">
+										{screenCaptureTestResult === 'granted' ? 'Granted' : 'Will prompt on start'}
+									</span>
+								</div>
+							</div>
+						</div>
+
+						<label class="flex items-center gap-2 text-sm text-surface-600-300">
+							<input
+								type="checkbox"
+								bind:checked={dontShowAgain}
+								class="h-4 w-4 rounded border-surface-400-500 text-primary-500 focus:ring-primary-500"
+							/>
+							Don't show this wizard again
+						</label>
 					</div>
 				{/if}
 			</div>
 
-			<!-- Footer -->
+			<!-- Footer Navigation -->
 			<div class="flex items-center justify-between border-t border-surface-200-700 px-6 py-4">
-				<label class="flex items-center gap-2 text-sm text-surface-600-300">
-					<input
-						type="checkbox"
-						bind:checked={dontShowAgain}
-						class="h-4 w-4 rounded border-surface-400-500 text-primary-500 focus:ring-primary-500"
-					/>
-					Don't show again
-				</label>
-				<button
-					type="button"
-					class="rounded-lg bg-primary-500 px-6 py-2 font-medium text-white transition-colors hover:bg-primary-600"
-					onclick={handleContinue}
-				>
-					Continue to Demo
-				</button>
+				<div>
+					{#if currentStep > 1}
+						<button
+							type="button"
+							class="inline-flex items-center gap-1 rounded-lg px-4 py-2 text-sm font-medium text-surface-600-300 transition-colors hover:bg-surface-100-800"
+							onclick={prevStep}
+						>
+							<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+							</svg>
+							Back
+						</button>
+					{:else}
+						<span></span>
+					{/if}
+				</div>
+
+				<div class="flex items-center gap-2">
+					{#if currentStep === 4}
+						<!-- Skip button for optional paper step -->
+						<button
+							type="button"
+							class="rounded-lg px-4 py-2 text-sm font-medium text-surface-500-400 transition-colors hover:text-surface-900-50"
+							onclick={nextStep}
+						>
+							Skip
+						</button>
+					{/if}
+
+					{#if currentStep < TOTAL_STEPS}
+						<button
+							type="button"
+							class="inline-flex items-center gap-1 rounded-lg bg-primary-500 px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600"
+							onclick={nextStep}
+						>
+							Next
+							<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+							</svg>
+						</button>
+					{:else}
+						<button
+							type="button"
+							class="rounded-lg bg-primary-500 px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600"
+							onclick={handleFinish}
+						>
+							Start Demo
+						</button>
+					{/if}
+				</div>
 			</div>
 
 			<!-- Disclaimer -->

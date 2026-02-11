@@ -10,6 +10,14 @@ import { browser } from '$app/environment';
 
 const CONSENT_KEY = 'pixelwise-onboarding-consent';
 
+export interface ConsentDataV1 {
+	acknowledged: boolean;
+	timestamp: number;
+	webgpuInstructionsSeen: boolean;
+	screenCaptureExplained: boolean;
+	version: 1;
+}
+
 export interface ConsentData {
 	/** User has completed onboarding */
 	acknowledged: boolean;
@@ -19,6 +27,14 @@ export interface ConsentData {
 	webgpuInstructionsSeen: boolean;
 	/** User has read screen capture explanation */
 	screenCaptureExplained: boolean;
+	/** Screen capture permission has been granted */
+	screenCaptureGranted: boolean;
+	/** User has viewed the research paper */
+	paperViewed: boolean;
+	/** Wizard steps the user has completed (1-indexed) */
+	completedSteps: number[];
+	/** Detected compute backend at onboarding time */
+	detectedBackend: string;
 	/** Version of onboarding shown (for future migrations) */
 	version: number;
 }
@@ -28,8 +44,27 @@ const DEFAULT_CONSENT: ConsentData = {
 	timestamp: 0,
 	webgpuInstructionsSeen: false,
 	screenCaptureExplained: false,
-	version: 1
+	screenCaptureGranted: false,
+	paperViewed: false,
+	completedSteps: [],
+	detectedBackend: '',
+	version: 2
 };
+
+/**
+ * Migrate v1 consent data to v2
+ */
+function migrateV1toV2(v1: ConsentDataV1): ConsentData {
+	return {
+		...DEFAULT_CONSENT,
+		acknowledged: v1.acknowledged,
+		timestamp: v1.timestamp,
+		webgpuInstructionsSeen: v1.webgpuInstructionsSeen,
+		screenCaptureExplained: v1.screenCaptureExplained,
+		completedSteps: v1.acknowledged ? [1, 2, 3, 4, 5] : [],
+		version: 2
+	};
+}
 
 /**
  * Get current consent data from localStorage
@@ -42,12 +77,19 @@ export function getConsent(): ConsentData | null {
 		const stored = localStorage.getItem(CONSENT_KEY);
 		if (!stored) return null;
 
-		const parsed = JSON.parse(stored) as ConsentData;
+		const parsed = JSON.parse(stored);
 
 		// Validate structure
 		if (typeof parsed.acknowledged !== 'boolean') return null;
 
-		return parsed;
+		// Migrate v1 to v2 if needed
+		if (!parsed.version || parsed.version === 1) {
+			const migrated = migrateV1toV2(parsed as ConsentDataV1);
+			localStorage.setItem(CONSENT_KEY, JSON.stringify(migrated));
+			return migrated;
+		}
+
+		return parsed as ConsentData;
 	} catch {
 		// JSON parse error or localStorage unavailable
 		return null;
