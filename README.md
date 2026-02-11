@@ -29,71 +29,18 @@ introduced the Futhark WebGPU backend as part of his research at DIKU.
 
 See [RFC: WebGPU Backend Distribution Strategy](https://github.com/jesssullivan/futhark/issues/1).
 
-
-## Todos
-
-- [ ] publish pixelwise.ephemera.xoxd.ai live demo
-- [ ] publish screenshots
-- [ ] update readme and docs with entrypoints and more useful info for playing with the compositor
-- [ ] Improve upon transparency handling and floatingUI integration
-  - Current approach buffers absolute XYZ values; consider 3 dimensional scanning instead of frame buffer
-- [ ] Improve memory management; add greedy viewport offloading
-- [ ] Maybe lace up with outbot harness when continuing research
-- [ ] Add multiarch gpu demos
-
-
 ---
 
-For WCAG contrast enhancement, we need to sample background colors *outward* from text.
-With only `d²`, you need a separate gradient computation pass (Sobel filter, finite differences).
+## Approach
 
-### The ESDT Solution: Track Offset Vectors
-
-Instead of storing `d² = Δx² + Δy²`, ESDT stores the offset vector `(Δx, Δy)` directly.
-
-**What you get for free:**
-- **Distance**: `d = sqrt(Δx² + Δy²)` — same as before
-- **Gradient direction**: `(Δx, Δy) / d` — the direction to the nearest edge
-- **Background sampling**: Follow the gradient outward to find background pixels
-
-This eliminates one pipeline pass and provides mathematically correct gradients.
-
-Anti-aliased fonts produce "gray pixels" at edges where opacity `L ∈ (0, 1)` encodes
-sub-pixel edge position. A common mistake is to add the gray offset as:
-
-```
-d² = x² + y² + (L - 0.5)²    // WRONG: This is 3D distance!
-```
-
-This treats opacity as a third spatial dimension. Instead, ESDT applies the offset
-*along* the 2D gradient direction during initialization:
-
-```
-offset = L - 0.5
-(Δx, Δy) = (offset × gx, offset × gy)  // where (gx, gy) is normalized gradient
-```
-
-
-### References
-
-- **Danielsson (1980)** - Original vector distance transform concept
-- **Meijster et al. (2000)** - Linear-time separable algorithm
-- **Wittens (2023)** - Subpixel extension for anti-aliased fonts
-
----
-
-Pixelwise implements the **Exact Signed Distance Transform (ESDT)** with offset vectors,
-computing `(Δx, Δy)` to the nearest edge for each pixel. This provides both distance
-(`√(Δx² + Δy²)`) and gradient direction (`(Δx, Δy)/d`) without a separate Sobel pass.
-
-
----
+ESDT (Exact Signed Distance Transform) stores offset vectors `(Δx, Δy)` instead of
+scalar distances. This provides gradient direction for free, eliminating one pipeline
+pass. See the [research paper](tex_research/pixelwise/dist/pixelwise.pdf) for details
+(Theorem 2.4, WCAG 2.1 contrast formulas).
 
 ## Architecture
 
 ### Backend Priority
-
-The system uses a unified Futhark backend with automatic fallback:
 
 ```
 1. Futhark WebGPU (GPU)   → Fastest, requires GPU adapter + WebGPU browser
@@ -101,9 +48,8 @@ The system uses a unified Futhark backend with automatic fallback:
 3. JavaScript Fallback    → Single-threaded, always works
 ```
 
-**Unified Backend:** The ESDT pipeline is generated from a single Futhark source
-(`futhark/pipeline.fut`) that compiles to both WebGPU (WGSL) and WASM multicore backends.
-This ensures algorithmic equivalence between GPU and CPU paths.
+Both GPU and CPU backends are generated from a single Futhark source
+(`futhark/pipeline.fut`), ensuring algorithmic equivalence.
 
 ### 6-Pass Pipeline
 
@@ -116,18 +62,13 @@ Pass 5: Background sampling (outward along ∇d)
 Pass 6: WCAG contrast check + luminance adjustment
 ```
 
-
-## Build System
-
-### Quick Start
+## Quick Start
 
 ```bash
 nix develop          # Enter environment (includes Futhark, Emscripten, Node 22)
 pnpm install         # Install dependencies
 just dev             # Start server at localhost:5175 (with COOP/COEP headers)
 ```
-
-### Commands
 
 | Command | Description |
 |---------|-------------|
@@ -138,86 +79,45 @@ just dev             # Start server at localhost:5175 (with COOP/COEP headers)
 | `just tex` | Compile research paper PDF |
 | `just build` | Full Bazel build |
 
-### Futhark WASM Compilation
-
-```bash
-# Direct compilation
-futhark wasm-multicore --library futhark/esdt.fut -o futhark/esdt
-
-# Via make (recommended)
-make -C futhark esdt
-
-# Via just (rebuilds all)
-just futhark-rebuild
-```
-
-**Generated artifacts:**
-
-| File | Purpose |
-|------|---------|
-| `esdt.wasm` | Compiled WebAssembly binary (~130KB) |
-| `esdt.mjs` | Emscripten runtime (ES module) |
-| `esdt.class.js` | FutharkContext wrapper (JavaScript API) |
-
-**Note:** Futhark WASM multicore requires COOP/COEP headers for `SharedArrayBuffer`.
-These are configured in `vite.config.ts` and applied automatically by `just dev`.
-
----
-
 ## Demos
 
-### `/demo/compositor`
-
-Full 6-pass ESDT pipeline with Screen Capture API input. **Requires WebGPU-enabled browser.**
-
-- **Backend:** WebGPU → Futhark WASM → JS fallback
-- **Input:** Screen capture via `getDisplayMedia()`
-- **Output:** WebGL2 overlay with adjusted pixels
-
-### `/demo/gradient-direction`
-
-ESDT offset vector visualization.
-
-- **Backend:** Futhark WASM (`compute_esdt_2d()`)
-- **Output:** Gradient arrows showing `(Δx, Δy)` vectors, distance heatmap
-
-### `/demo/contrast-analysis`
-
-WCAG 2.1 contrast ratio computation.
-
-- **Backend:** Web Worker (TypeScript)
-- **Output:** Contrast ratio, AA/AAA compliance status
-
-
-**Active video capture shaders:**
-- `video-capture-esdt.wgsl` — Required for GPUExternalTexture
-- `video-capture-esdt-fallback.wgsl` — Firefox fallback
-
-**Key data structures:**
-- `DistanceData { delta_x, delta_y, distance }` — 12 bytes
-- `GlyphPixel { x, y, coverage, edge_weight, gradient_x, gradient_y }` — 24 bytes
-
----
+| Route | Description |
+|-------|-------------|
+| `/demo/compositor` | Full 6-pass ESDT pipeline with Screen Capture API |
+| `/demo/gradient-direction` | ESDT offset vector visualization |
+| `/demo/contrast-analysis` | WCAG 2.1 contrast ratio computation |
+| `/demo/performance` | Real-time pipeline benchmarks |
+| `/demo/before-after` | Side-by-side contrast enhancement comparison |
 
 ## Testing
 
-Tests in `tests/theorem-verification/` verify WCAG formulas and ESDT properties.
-
 ```bash
-pnpm test tests/theorem-verification/
+pnpm test                              # All tests
+pnpm test tests/theorem-verification/  # WCAG + ESDT property tests
+pnpm test tests/compute-dispatcher     # Backend selection + fallback chain
 ```
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/lib/core/ComputeDispatcher.ts` | Backend selection (WebGPU → WASM → JS) |
+| `src/lib/pixelwise/featureDetection.ts` | Capability detection |
+| `src/lib/futhark/` | Futhark WASM module wrapper |
+| `src/lib/futhark-webgpu/` | Futhark-generated WebGPU pipeline |
+| `futhark/*.fut` | Futhark source (ESDT, WCAG algorithms) |
+| `vite.config.ts` | Dev server config, COOP/COEP headers |
 
 ---
 
 ## Paper
 
-- Mathematical foundations with verification status in tex source; not finalized.  Just for funsies. 
+Mathematical foundations with verification status in tex source; not finalized.
 
-- Originally developed with Rust SIMD as a project to learn Rust SIMD, maybe @brightbloom could lend a hand with that next time :eyes:
-- This project received autonomous assistance with PBT constraining, fuzzing, verification and function composition as well as some GPU integration work performed within **Tinyland** with the xoxd.ai stack as a bit of a dogfooding experiment, which will be published and open sourced when it is appropriate to do so
-
-
----
+Originally developed with Rust SIMD as a project to learn Rust SIMD; this project
+received autonomous assistance with PBT constraining, fuzzing, verification and
+function composition as well as some GPU integration work performed within **Tinyland**
+with the xoxd.ai stack.
 
 ## License
 
@@ -227,7 +127,7 @@ zlib
 
 Jess Sullivan <jess@sulliwood.org>
 
-Key references:
+**References**:
 - Danielsson, P.E. (1980). Euclidean Distance Mapping. CGIP 14(3):227-248.
 - Meijster, A. et al. (2000). A General Algorithm for Computing Distance Transforms in Linear Time.
 - Wittens, S. (2023). Subpixel Distance Transform. https://acko.net/blog/subpixel-distance-transform/
