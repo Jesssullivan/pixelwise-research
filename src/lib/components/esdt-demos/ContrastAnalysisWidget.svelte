@@ -96,7 +96,7 @@
 
 			console.log(`[ContrastWidget] Worker ready, SIMD: ${simdEnabled}`);
 			return true;
-		} catch (error) {
+		} catch (error: unknown) {
 			console.warn('[ContrastWidget] Worker initialization failed, using JS fallback:', error);
 			return false;
 		}
@@ -231,7 +231,7 @@
 				);
 				ratios = result.ratios;
 				usingJsFallback = false;
-			} catch (error) {
+			} catch (error: unknown) {
 				console.warn('[ContrastWidget] Worker call failed, using JS fallback:', error);
 				ratios = analyzeAllPairsJS();
 				usingJsFallback = true;

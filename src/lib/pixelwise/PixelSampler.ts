@@ -63,9 +63,10 @@ export class CanvasSampler implements PixelSampler {
 		try {
 			const pixel = this.ctx.getImageData(clampedX, clampedY, 1, 1).data;
 			return [pixel[0], pixel[1], pixel[2]];
-		} catch (error) {
+		} catch (error: unknown) {
 			// Security error or invalid state - return black
-			console.warn('CanvasSampler: Failed to sample pixel', error);
+			const message = error instanceof Error ? error.message : String(error);
+			console.warn('CanvasSampler: Failed to sample pixel', message);
 			return [0, 0, 0];
 		}
 	}
@@ -174,8 +175,9 @@ export class CanvasSampler implements PixelSampler {
 						result[i * 3 + 2] = 0;
 					}
 				}
-			} catch (error) {
-				console.warn('CanvasSampler: Failed to batch sample', error);
+			} catch (error: unknown) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.warn('CanvasSampler: Failed to batch sample', message);
 				// Fallback to individual samples
 				for (let i = 0; i < numSamples; i++) {
 					const [r, g, b] = this.sample(coords[i * 2], coords[i * 2 + 1]);
@@ -192,8 +194,7 @@ export class CanvasSampler implements PixelSampler {
 	dispose(): void {
 		// Canvas contexts don't need explicit cleanup
 		// Just clear references
-		// @ts-expect-error - Clearing reference for GC
-		this.ctx = null;
+		this.ctx = null as unknown as CanvasRenderingContext2D;
 	}
 }
 
@@ -229,8 +230,9 @@ export class WebGLSampler implements PixelSampler {
 		try {
 			this.gl.readPixels(clampedX, clampedY, 1, 1, this.gl.RGBA, this.gl.UNSIGNED_BYTE, this.pixelBuffer);
 			return [this.pixelBuffer[0], this.pixelBuffer[1], this.pixelBuffer[2]];
-		} catch (error) {
-			console.warn('WebGLSampler: Failed to sample pixel', error);
+		} catch (error: unknown) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.warn('WebGLSampler: Failed to sample pixel', message);
 			return [0, 0, 0];
 		}
 	}
@@ -271,8 +273,9 @@ export class WebGLSampler implements PixelSampler {
 						result[i * 3 + 2] = 0;
 					}
 				}
-			} catch (error) {
-				console.warn('WebGLSampler: Failed to batch read framebuffer', error);
+			} catch (error: unknown) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.warn('WebGLSampler: Failed to batch read framebuffer', message);
 				// Fallback to individual
 				for (let i = 0; i < numSamples; i++) {
 					const [r, g, b] = this.sample(coords[i * 2], coords[i * 2 + 1]);
@@ -296,8 +299,7 @@ export class WebGLSampler implements PixelSampler {
 
 	dispose(): void {
 		// WebGL contexts don't need explicit cleanup from sampler
-		// @ts-expect-error - Clearing reference for GC
-		this.gl = null;
+		this.gl = null as unknown as WebGL2RenderingContext;
 	}
 }
 
@@ -442,8 +444,9 @@ export class VideoSampler implements PixelSampler {
 
 				// Update cached sampler
 				this.cachedSampler = new CanvasSampler(this.scratchCtx);
-			} catch (error) {
-				console.warn('VideoSampler: Failed to draw video frame', error);
+			} catch (error: unknown) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.warn('VideoSampler: Failed to draw video frame', message);
 				return false;
 			}
 		}
@@ -477,12 +480,9 @@ export class VideoSampler implements PixelSampler {
 			this.cachedSampler.dispose();
 			this.cachedSampler = null;
 		}
-		// @ts-expect-error - Clearing references for GC
-		this.video = null;
-		// @ts-expect-error - Clearing references for GC
-		this.scratchCtx = null;
-		// @ts-expect-error - Clearing references for GC
-		this.scratchCanvas = null;
+		this.video = null as unknown as HTMLVideoElement;
+		this.scratchCtx = null as unknown as CanvasRenderingContext2D;
+		this.scratchCanvas = null as unknown as HTMLCanvasElement;
 	}
 }
 
@@ -507,7 +507,7 @@ export function createSamplerFromSource(
 
 		// WebGL2RenderingContext
 		return { success: true, data: new WebGLSampler(source) };
-	} catch (error) {
+	} catch (error: unknown) {
 		return {
 			success: false,
 			error: error instanceof Error ? error : new Error(String(error))

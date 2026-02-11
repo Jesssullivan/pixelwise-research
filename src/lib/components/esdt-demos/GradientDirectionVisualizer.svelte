@@ -59,7 +59,7 @@
 			await dispatcher.initialize();
 			dispatcherReady = true;
 			computeESDT();
-		} catch (error) {
+		} catch (error: unknown) {
 			console.warn('[GradientViz] Dispatcher initialization failed:', error);
 			// Dispatcher still provides JS fallback even if GPU/WASM fail
 			dispatcherReady = true;
@@ -251,7 +251,7 @@
 			visualizeGradients();
 
 			console.log(`[GradientViz] computeEsdt (${activeBackendLabel}): ${pixelCount} pixels in ${processingTimeMs.toFixed(2)}ms`);
-		} catch (error) {
+		} catch (error: unknown) {
 			console.error('[GradientViz] ESDT computation failed:', error);
 		}
 	}

@@ -127,9 +127,10 @@ export class ColorNormalizer {
 					willReadFrequently: false,
 					alpha: true
 				});
-			} catch (error) {
+			} catch (error: unknown) {
 				if (this.config.debug) {
-					console.warn('[ColorNormalizer] Failed to create canvas context:', error);
+					const message = error instanceof Error ? error.message : String(error);
+					console.warn('[ColorNormalizer] Failed to create canvas context:', message);
 				}
 				return null;
 			}
@@ -194,16 +195,16 @@ export class ColorNormalizer {
 			if (parsed) {
 				const rgb = oklchToRgb(parsed.l, parsed.c, parsed.h);
 				const result: NormalizedColor = {
-					rgb: [rgb.r, rgb.g, rgb.b],
+					rgb,
 					original: normalizedInput,
-					hex: this.rgbToHex([rgb.r, rgb.g, rgb.b]),
+					hex: this.rgbToHex(rgb),
 					hasAlpha: parsed.alpha < 1,
 					alpha: parsed.alpha,
 					cached: false
 				};
 				this.cacheResult(normalizedInput, result);
 				if (this.config.debug) {
-					console.log(`[ColorNormalizer] OKLCH: ${color} → RGB(${rgb.r}, ${rgb.g}, ${rgb.b})`);
+					console.log(`[ColorNormalizer] OKLCH: ${color} → RGB(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`);
 				}
 				return result;
 			} else {

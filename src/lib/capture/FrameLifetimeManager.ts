@@ -94,23 +94,12 @@ export class FrameLifetimeManager {
 	private config: FrameLifetimeConfig;
 	private _stage: PipelineStage = 'idle';
 
-	// Pipeline resources (lazily initialized)
-	private grayscaleGradientPipeline: GPUComputePipeline | null = null;
-	private esdtXPassPipeline: GPUComputePipeline | null = null;
-	private esdtYPassPipeline: GPUComputePipeline | null = null;
-	private extractPixelsPipeline: GPUComputePipeline | null = null;
-	private backgroundSamplePipeline: GPUComputePipeline | null = null;
-	private contrastAnalysisPipeline: GPUComputePipeline | null = null;
-	private colorAdjustPipeline: GPUComputePipeline | null = null;
-
-	// Video-specific pipeline (uses external texture)
-	private videoCaptureEsdtPipeline: GPUComputePipeline | null = null;
+	// Video-specific pipeline (uses external texture for RGBA extraction)
+	private videoCapturePipeline: GPUComputePipeline | null = null;
 	private videoCaptureLayout: GPUBindGroupLayout | null = null;
 
 	// Reusable GPU buffers
-	private grayscaleBuffer: GPUBuffer | null = null;
-	private gradientXBuffer: GPUBuffer | null = null;
-	private gradientYBuffer: GPUBuffer | null = null;
+	private rgbaOutputBuffer: GPUBuffer | null = null;
 	private distancesBuffer: GPUBuffer | null = null;
 	private glyphPixelsBuffer: GPUBuffer | null = null;
 	private pixelCountBuffer: GPUBuffer | null = null;
@@ -139,7 +128,7 @@ export class FrameLifetimeManager {
 
 	/** Whether pipelines are initialized */
 	get isInitialized(): boolean {
-		return this.videoCaptureEsdtPipeline !== null;
+		return this.videoCapturePipeline !== null;
 	}
 
 	/**
@@ -148,43 +137,38 @@ export class FrameLifetimeManager {
 	 * Must be called before processing frames.
 	 */
 	async initializePipelines(): Promise<void> {
-		// Create video capture layout based on capabilities
+		// Simplified layout: sampler, texture, rgba_output, params
 		this.videoCaptureLayout = this.videoCapture.createBindGroupLayout(
 			this.videoCapture.capabilities.importExternalTexture,
 			[
-				// Additional entries for ESDT output buffers
+				// RGBA output storage buffer
 				{
 					binding: 2,
 					visibility: GPUShaderStage.COMPUTE,
 					buffer: { type: 'storage' }
 				},
+				// Params uniform (width, height)
 				{
 					binding: 3,
-					visibility: GPUShaderStage.COMPUTE,
-					buffer: { type: 'storage' }
-				},
-				{
-					binding: 4,
 					visibility: GPUShaderStage.COMPUTE,
 					buffer: { type: 'uniform' }
 				}
 			]
 		);
 
-		// Create video capture ESDT pipeline
-		// This shader handles external texture input and outputs grayscale + gradients
-		const videoCaptureEsdtModule = this.device.createShaderModule({
-			label: 'video-capture-esdt',
-			code: this.getVideoCaptureEsdtShader()
+		// Create video capture pipeline (texture -> RGBA only)
+		const videoCaptureModule = this.device.createShaderModule({
+			label: 'video-capture-rgba',
+			code: this.getVideoCaptureRgbaShader()
 		});
 
-		this.videoCaptureEsdtPipeline = this.device.createComputePipeline({
-			label: 'video-capture-esdt-pipeline',
+		this.videoCapturePipeline = this.device.createComputePipeline({
+			label: 'video-capture-rgba-pipeline',
 			layout: this.device.createPipelineLayout({
 				bindGroupLayouts: [this.videoCaptureLayout]
 			}),
 			compute: {
-				module: videoCaptureEsdtModule,
+				module: videoCaptureModule,
 				entryPoint: 'main'
 			}
 		});
@@ -271,7 +255,7 @@ export class FrameLifetimeManager {
 				outputTexture: this.outputTexture,
 				error: null
 			};
-		} catch (err) {
+		} catch (err: unknown) {
 			this._stage = 'error';
 			const errorMessage = err instanceof Error ? err.message : String(err);
 			console.error('[FrameLifetimeManager] Frame processing failed:', errorMessage);
@@ -300,23 +284,11 @@ export class FrameLifetimeManager {
 		const pixelCount = width * height;
 		const distanceDataSize = 12; // 3 x f32 per pixel
 
-		// Allocate new buffers
-		this.grayscaleBuffer = this.device.createBuffer({
-			label: 'grayscale',
+		// RGBA output from video capture shader (u32 per pixel)
+		this.rgbaOutputBuffer = this.device.createBuffer({
+			label: 'rgba-output',
 			size: pixelCount * 4,
-			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-		});
-
-		this.gradientXBuffer = this.device.createBuffer({
-			label: 'gradient-x',
-			size: pixelCount * 4,
-			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-		});
-
-		this.gradientYBuffer = this.device.createBuffer({
-			label: 'gradient-y',
-			size: pixelCount * 4,
-			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
 		});
 
 		this.distancesBuffer = this.device.createBuffer({
@@ -366,9 +338,7 @@ export class FrameLifetimeManager {
 	 * Destroy GPU buffers
 	 */
 	private destroyBuffers(): void {
-		this.grayscaleBuffer?.destroy();
-		this.gradientXBuffer?.destroy();
-		this.gradientYBuffer?.destroy();
+		this.rgbaOutputBuffer?.destroy();
 		this.distancesBuffer?.destroy();
 		this.glyphPixelsBuffer?.destroy();
 		this.pixelCountBuffer?.destroy();
@@ -376,9 +346,7 @@ export class FrameLifetimeManager {
 		this.contrastAnalysesBuffer?.destroy();
 		this.outputTexture?.destroy();
 
-		this.grayscaleBuffer = null;
-		this.gradientXBuffer = null;
-		this.gradientYBuffer = null;
+		this.rgbaOutputBuffer = null;
 		this.distancesBuffer = null;
 		this.glyphPixelsBuffer = null;
 		this.pixelCountBuffer = null;
@@ -408,7 +376,10 @@ export class FrameLifetimeManager {
 	}
 
 	/**
-	 * Encode video capture and ESDT passes
+	 * Encode video capture pass (texture -> RGBA only)
+	 *
+	 * All further processing (grayscale, Sobel, ESDT, WCAG) is handled
+	 * downstream by the Futhark pipeline, not in this shader.
 	 */
 	private encodeVideoCapturePasses(
 		encoder: GPUCommandEncoder,
@@ -416,17 +387,15 @@ export class FrameLifetimeManager {
 		width: number,
 		height: number
 	): void {
-		// Create params buffer
+		// Params buffer: width and height only
 		const paramsBuffer = this.device.createBuffer({
 			label: 'video-capture-params',
-			size: 16, // width, height, dpr, padding
+			size: 8, // 2 x u32
 			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 		});
 
-		const params = new ArrayBuffer(16);
-		new Uint32Array(params, 0, 2).set([width, height]);
-		new Float32Array(params, 8, 1).set([window.devicePixelRatio || 1]);
-		this.device.queue.writeBuffer(paramsBuffer, 0, params);
+		const paramsData = new Uint32Array([width, height]);
+		this.device.queue.writeBuffer(paramsBuffer, 0, paramsData);
 
 		// Create bind group based on frame type
 		let bindGroup: GPUBindGroup;
@@ -438,9 +407,8 @@ export class FrameLifetimeManager {
 				entries: [
 					{ binding: 0, resource: this.videoCapture.videoSampler },
 					{ binding: 1, resource: frameImport.externalTexture },
-					{ binding: 2, resource: { buffer: this.grayscaleBuffer! } },
-					{ binding: 3, resource: { buffer: this.gradientXBuffer! } },
-					{ binding: 4, resource: { buffer: paramsBuffer } }
+					{ binding: 2, resource: { buffer: this.rgbaOutputBuffer! } },
+					{ binding: 3, resource: { buffer: paramsBuffer } }
 				]
 			});
 		} else if (frameImport.texture) {
@@ -450,175 +418,91 @@ export class FrameLifetimeManager {
 				entries: [
 					{ binding: 0, resource: this.videoCapture.videoSampler },
 					{ binding: 1, resource: frameImport.texture.createView() },
-					{ binding: 2, resource: { buffer: this.grayscaleBuffer! } },
-					{ binding: 3, resource: { buffer: this.gradientXBuffer! } },
-					{ binding: 4, resource: { buffer: paramsBuffer } }
+					{ binding: 2, resource: { buffer: this.rgbaOutputBuffer! } },
+					{ binding: 3, resource: { buffer: paramsBuffer } }
 				]
 			});
 		} else {
 			throw new Error('VideoFrameImport has no texture');
 		}
 
-		// Pass 1: Video to Grayscale + Gradient
-		const pass1 = encoder.beginComputePass({ label: 'video-capture-esdt' });
-		pass1.setPipeline(this.videoCaptureEsdtPipeline!);
-		pass1.setBindGroup(0, bindGroup);
-		pass1.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 8));
-		pass1.end();
+		// Video capture pass: texture -> packed RGBA u32
+		const pass = encoder.beginComputePass({ label: 'video-capture-rgba' });
+		pass.setPipeline(this.videoCapturePipeline!);
+		pass.setBindGroup(0, bindGroup);
+		pass.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 8));
+		pass.end();
 
-		// Clean up params buffer after encoding
-		// Note: Buffer must remain valid until command buffer is submitted
-		// We'll let it be garbage collected after submit
+		// Note: paramsBuffer must remain valid until command buffer is submitted
 	}
 
 	/**
-	 * Get WGSL shader code for video capture ESDT
+	 * Get WGSL shader code for video capture (texture -> RGBA only).
 	 *
-	 * This shader handles both external textures and regular textures
-	 * based on the texture type binding.
+	 * All grayscale, Sobel gradient, and ESDT processing is handled
+	 * downstream by the Futhark pipeline.
 	 */
-	private getVideoCaptureEsdtShader(): string {
-		// Use external texture if supported
+	private getVideoCaptureRgbaShader(): string {
 		if (this.videoCapture.capabilities.importExternalTexture) {
 			return `
-// Video Capture ESDT - External Texture Version
-// Converts video frame to grayscale + gradient for ESDT pipeline
+// Video Capture - External Texture to RGBA
+// Minimal shader: samples video texture and writes packed RGBA u32
 
 @group(0) @binding(0) var videoSampler: sampler;
 @group(0) @binding(1) var videoTexture: texture_external;
-@group(0) @binding(2) var<storage, read_write> grayscale: array<f32>;
-@group(0) @binding(3) var<storage, read_write> gradient_x: array<f32>;
-@group(0) @binding(4) var<uniform> params: Params;
+@group(0) @binding(2) var<storage, read_write> rgba_output: array<u32>;
+@group(0) @binding(3) var<uniform> params: Params;
 
 struct Params {
     width: u32,
     height: u32,
-    dpr: f32,
-    padding: u32,
-}
-
-// sRGB linearization (WCAG 2.1 exact constants)
-fn srgb_to_linear(c: f32) -> f32 {
-    if (c <= 0.03928) {
-        return c / 12.92;
-    }
-    return pow((c + 0.055) / 1.055, 2.4);
-}
-
-// Relative luminance (WCAG 2.1)
-fn relative_luminance(rgb: vec3<f32>) -> f32 {
-    let lin = vec3<f32>(
-        srgb_to_linear(rgb.r),
-        srgb_to_linear(rgb.g),
-        srgb_to_linear(rgb.b)
-    );
-    return 0.2126 * lin.r + 0.7152 * lin.g + 0.0722 * lin.b;
-}
-
-fn sample_video(x: i32, y: i32) -> f32 {
-    let px = clamp(x, 0, i32(params.width) - 1);
-    let py = clamp(y, 0, i32(params.height) - 1);
-    let uv = vec2<f32>(f32(px) + 0.5, f32(py) + 0.5) / vec2<f32>(f32(params.width), f32(params.height));
-    let color = textureSampleBaseClampToEdge(videoTexture, videoSampler, uv);
-    return relative_luminance(color.rgb);
 }
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let x = i32(global_id.x);
-    let y = i32(global_id.y);
-
     if (global_id.x >= params.width || global_id.y >= params.height) {
         return;
     }
-
-    let idx = global_id.y * params.width + global_id.x;
-
-    // Sample center pixel
-    let center = sample_video(x, y);
-
-    // INVERT luminance for text detection (dark text -> high value)
-    grayscale[idx] = 1.0 - center;
-
-    // Compute Sobel gradient
-    let gx = (
-        -1.0 * sample_video(x - 1, y - 1) +
-        -2.0 * sample_video(x - 1, y    ) +
-        -1.0 * sample_video(x - 1, y + 1) +
-         1.0 * sample_video(x + 1, y - 1) +
-         2.0 * sample_video(x + 1, y    ) +
-         1.0 * sample_video(x + 1, y + 1)
+    let uv = vec2<f32>(
+        (f32(global_id.x) + 0.5) / f32(params.width),
+        (f32(global_id.y) + 0.5) / f32(params.height)
     );
-
-    gradient_x[idx] = gx / 8.0;
+    let color = textureSampleBaseClampToEdge(videoTexture, videoSampler, uv);
+    let r = u32(clamp(color.r * 255.0, 0.0, 255.0));
+    let g = u32(clamp(color.g * 255.0, 0.0, 255.0));
+    let b = u32(clamp(color.b * 255.0, 0.0, 255.0));
+    let a = u32(clamp(color.a * 255.0, 0.0, 255.0));
+    let idx = global_id.y * params.width + global_id.x;
+    rgba_output[idx] = r | (g << 8u) | (b << 16u) | (a << 24u);
 }
 `;
 		} else {
-			// Fallback: regular texture
 			return `
-// Video Capture ESDT - Regular Texture Fallback
+// Video Capture Fallback - Regular Texture to RGBA
 // For browsers without importExternalTexture support
 
 @group(0) @binding(0) var videoSampler: sampler;
 @group(0) @binding(1) var videoTexture: texture_2d<f32>;
-@group(0) @binding(2) var<storage, read_write> grayscale: array<f32>;
-@group(0) @binding(3) var<storage, read_write> gradient_x: array<f32>;
-@group(0) @binding(4) var<uniform> params: Params;
+@group(0) @binding(2) var<storage, read_write> rgba_output: array<u32>;
+@group(0) @binding(3) var<uniform> params: Params;
 
 struct Params {
     width: u32,
     height: u32,
-    dpr: f32,
-    padding: u32,
-}
-
-fn srgb_to_linear(c: f32) -> f32 {
-    if (c <= 0.03928) {
-        return c / 12.92;
-    }
-    return pow((c + 0.055) / 1.055, 2.4);
-}
-
-fn relative_luminance(rgb: vec3<f32>) -> f32 {
-    let lin = vec3<f32>(
-        srgb_to_linear(rgb.r),
-        srgb_to_linear(rgb.g),
-        srgb_to_linear(rgb.b)
-    );
-    return 0.2126 * lin.r + 0.7152 * lin.g + 0.0722 * lin.b;
-}
-
-fn sample_video(x: i32, y: i32) -> f32 {
-    let px = clamp(x, 0, i32(params.width) - 1);
-    let py = clamp(y, 0, i32(params.height) - 1);
-    let color = textureLoad(videoTexture, vec2<i32>(px, py), 0);
-    return relative_luminance(color.rgb);
 }
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let x = i32(global_id.x);
-    let y = i32(global_id.y);
-
     if (global_id.x >= params.width || global_id.y >= params.height) {
         return;
     }
-
+    let color = textureLoad(videoTexture, vec2<i32>(i32(global_id.x), i32(global_id.y)), 0);
+    let r = u32(clamp(color.r * 255.0, 0.0, 255.0));
+    let g = u32(clamp(color.g * 255.0, 0.0, 255.0));
+    let b = u32(clamp(color.b * 255.0, 0.0, 255.0));
+    let a = u32(clamp(color.a * 255.0, 0.0, 255.0));
     let idx = global_id.y * params.width + global_id.x;
-
-    let center = sample_video(x, y);
-    grayscale[idx] = 1.0 - center;
-
-    let gx = (
-        -1.0 * sample_video(x - 1, y - 1) +
-        -2.0 * sample_video(x - 1, y    ) +
-        -1.0 * sample_video(x - 1, y + 1) +
-         1.0 * sample_video(x + 1, y - 1) +
-         2.0 * sample_video(x + 1, y    ) +
-         1.0 * sample_video(x + 1, y + 1)
-    );
-
-    gradient_x[idx] = gx / 8.0;
+    rgba_output[idx] = r | (g << 8u) | (b << 16u) | (a << 24u);
 }
 `;
 		}
@@ -629,7 +513,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 	 */
 	destroy(): void {
 		this.destroyBuffers();
-		this.videoCaptureEsdtPipeline = null;
+		this.videoCapturePipeline = null;
 		this.videoCaptureLayout = null;
 		this._stage = 'idle';
 	}

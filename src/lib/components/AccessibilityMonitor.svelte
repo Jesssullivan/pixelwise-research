@@ -124,7 +124,7 @@ import { pixelwiseStore, type WCAGLevel } from '$lib/stores/pixelwiseStore.svelt
 					// initialize() returned false (already in progress or failed)
 					console.log('[AccessibilityMonitor] Compositor initialization skipped (concurrent call)');
 				}
-			} catch (err) {
+			} catch (err: unknown) {
 				console.error('[AccessibilityMonitor] Compositor initialization failed:', err);
 				compositorMode = 'none';
 			}
@@ -232,7 +232,8 @@ import { pixelwiseStore, type WCAGLevel } from '$lib/stores/pixelwiseStore.svelt
 	let activeTab = $state<'accessibility' | 'privacy' | 'devtools' | 'shader'>('accessibility');
 
 	// Transparency data state
-	let userData = $state<any>(null);
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- server-side data shape is dynamic
+	let userData = $state<Record<string, any> | null>(null);
 	let isLoadingUserData = $state(false);
 	let userDataError = $state<string | null>(null);
 
@@ -376,7 +377,7 @@ import { pixelwiseStore, type WCAGLevel } from '$lib/stores/pixelwiseStore.svelt
 					element.classList.remove('accessibility-highlight');
 				}, 3000);
 			}
-		} catch (error) {
+		} catch (error: unknown) {
 			console.error('[A11y Monitor] Failed to highlight element:', error);
 		}
 	}
@@ -420,7 +421,7 @@ import { pixelwiseStore, type WCAGLevel } from '$lib/stores/pixelwiseStore.svelt
 					cookiesEnabled: navigator.cookieEnabled
 				}
 			};
-		} catch (error) {
+		} catch (error: unknown) {
 			console.error('[A11y Monitor] Failed to load user data:', error);
 			userDataError = error instanceof Error ? error.message : 'Unknown error';
 		} finally {
@@ -466,7 +467,7 @@ import { pixelwiseStore, type WCAGLevel } from '$lib/stores/pixelwiseStore.svelt
 			};
 
 			await pc.createOffer().then(offer => pc.setLocalDescription(offer));
-		} catch (error) {
+		} catch (error: unknown) {
 			console.warn('[A11y Monitor] Local IP detection failed:', error);
 		}
 	}
@@ -478,12 +479,23 @@ import { pixelwiseStore, type WCAGLevel } from '$lib/stores/pixelwiseStore.svelt
 		if (!browser || !('connection' in navigator)) return;
 
 		try {
-			const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+			// NetworkInformation API is experimental and not in standard TypeScript lib
+			interface NetworkInformation {
+				effectiveType?: string;
+			}
+			interface NavigatorWithConnection extends Navigator {
+				connection?: NetworkInformation;
+				mozConnection?: NetworkInformation;
+				webkitConnection?: NetworkInformation;
+			}
+			const nav = navigator as NavigatorWithConnection;
+			const conn = nav.connection || nav.mozConnection || nav.webkitConnection;
 			if (conn && conn.effectiveType) {
 				connectionType = conn.effectiveType; // '4g', '3g', '2g', 'slow-2g'
 			}
-		} catch (error) {
-			console.warn('[A11y Monitor] Connection type detection failed:', error);
+		} catch (error: unknown) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.warn('[A11y Monitor] Connection type detection failed:', message);
 		}
 	}
 

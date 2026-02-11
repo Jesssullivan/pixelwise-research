@@ -152,7 +152,7 @@ export function useWebGPUStatus(): WebGPUStatus {
 
 			// Run async capability detection (includes full WebGPU adapter verification)
 			capabilities = await getCapabilitiesAsync();
-		} catch (err) {
+		} catch (err: unknown) {
 			error = err instanceof Error ? err : new Error(String(err));
 			console.error('[useWebGPUStatus] Detection failed:', err);
 		} finally {

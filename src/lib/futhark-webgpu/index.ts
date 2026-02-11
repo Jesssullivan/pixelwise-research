@@ -139,12 +139,13 @@ export async function newFutharkWebGPUContext(): Promise<FutharkWebGPUContext> {
 			await fut.init(emscriptenModule);
 
 			return createContext(fut);
-		} catch (err) {
+		} catch (err: unknown) {
 			contextPromise = null; // Reset on failure to allow retry
+			const message = err instanceof Error ? err.message : String(err);
 			throw new Error(
 				`Failed to initialize Futhark WebGPU context. ` +
 					`Ensure 'just futhark-webgpu-compile' has been run. ` +
-					`Original error: ${err}`
+					`Original error: ${message}`
 			);
 		}
 	})();

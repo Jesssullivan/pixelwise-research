@@ -13,9 +13,15 @@
 // Import the Emscripten runtime which provides loadWASM
 import loadWASM from './esdt.mjs';
 
+// Augment globalThis to include the loadWASM function
+// esdt.class.js expects loadWASM to be in global scope
+declare global {
+	// eslint-disable-next-line no-var
+	var loadWASM: typeof import('./esdt.mjs').default;
+}
+
 // Make loadWASM available globally for esdt.class.js
-// This is necessary because esdt.class.js expects loadWASM to be in scope
-(globalThis as any).loadWASM = loadWASM;
+globalThis.loadWASM = loadWASM;
 
 // Re-export everything from esdt.class.js
 export { newFutharkContext, FutharkContext, FutharkArray, FutharkOpaque } from './esdt.class.js';

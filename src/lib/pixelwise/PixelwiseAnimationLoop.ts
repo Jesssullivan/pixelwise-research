@@ -147,8 +147,9 @@ export class PixelwiseAnimationLoop {
 				// Execute frame callback
 				try {
 					onFrame();
-				} catch (error) {
-					console.error('[PixelwiseAnimationLoop] Frame callback error:', error);
+				} catch (error: unknown) {
+					const message = error instanceof Error ? error.message : String(error);
+					console.error('[PixelwiseAnimationLoop] Frame callback error:', message);
 				}
 			}
 

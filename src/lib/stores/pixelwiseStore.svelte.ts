@@ -1007,7 +1007,7 @@ class PixelwiseStore {
 			} else {
 				console.debug(`[Pixelwise] No saved settings found at ${key}, using defaults`);
 			}
-		} catch (error) {
+		} catch (error: unknown) {
 			console.error('[Pixelwise] Failed to load settings from localStorage:', error);
 		}
 	}
@@ -1035,7 +1035,7 @@ class PixelwiseStore {
 			localStorage.setItem(key, JSON.stringify(settings));
 
 			console.debug(`[Pixelwise] Settings saved to ${key}`);
-		} catch (error) {
+		} catch (error: unknown) {
 			console.error('[Pixelwise] Failed to save settings to localStorage:', error);
 		}
 	}

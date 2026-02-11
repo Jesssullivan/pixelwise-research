@@ -281,6 +281,7 @@ export function skeletonColorUtilities(config: SkeletonColorConfig = {}): Plugin
 			if (id === VIRTUAL_MODULE_ID) {
 				return RESOLVED_VIRTUAL_ID;
 			}
+			return undefined;
 		},
 
 		/**

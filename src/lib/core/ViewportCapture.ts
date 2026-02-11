@@ -113,7 +113,7 @@ export function createViewportCapture() {
 			}
 
 			return ctx !== null;
-		} catch (err) {
+		} catch (err: unknown) {
 			state.error = err instanceof Error ? err : new Error(String(err));
 			return false;
 		}
@@ -155,7 +155,7 @@ export function createViewportCapture() {
 					`[ViewportCapture] Screen capture started: ${captureSource.width}x${captureSource.height}`
 				);
 				return true;
-			} catch (err) {
+			} catch (err: unknown) {
 				state.error = err instanceof Error ? err : new Error(String(err));
 				console.error('[ViewportCapture] Failed to start capture:', err);
 				return false;
@@ -203,7 +203,7 @@ export function createViewportCapture() {
 			};
 
 			state.lastCapture = latestFrameData;
-		} catch (err) {
+		} catch (err: unknown) {
 			// Ignore frame errors, they happen during transitions
 		}
 	}
@@ -292,7 +292,7 @@ export function createViewportCapture() {
 				scrollY: 0,
 				timestamp: performance.now()
 			};
-		} catch (err) {
+		} catch (err: unknown) {
 			state.error = err instanceof Error ? err : new Error(String(err));
 			return null;
 		}
