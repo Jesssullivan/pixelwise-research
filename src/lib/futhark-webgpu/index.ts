@@ -246,3 +246,4 @@ export async function isFutharkWebGPUAvailable(): Promise<boolean> {
 		return false;
 	}
 }
+

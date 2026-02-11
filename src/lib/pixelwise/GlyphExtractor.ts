@@ -15,8 +15,8 @@
  * @module pixelwise/GlyphExtractor
  */
 
-import { type FontMetrics, FontMetricsCache, extractFontSignature } from './FontMetricsCache';
-import { type DOMCoord, type TexelCoord, CoordinateTransformer } from './CoordinateTransformer';
+import { type FontMetrics, FontMetricsCache } from './FontMetricsCache';
+import { CoordinateTransformer } from './CoordinateTransformer';
 
 /**
  * Bounds of a single glyph in DOM space
