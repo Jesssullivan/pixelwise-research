@@ -66,6 +66,54 @@ export interface FutharkWebGPUContext {
 		maxDistance: number
 	): Promise<Float32Array>;
 
+	/**
+	 * Render ESDT distances as a heatmap (debug/visualization).
+	 *
+	 * Red = close to glyph edge, green = medium, blue = far.
+	 * Non-edge pixels are transparent.
+	 *
+	 * @returns RGBA pixel data as Uint8Array (width * height * 4)
+	 */
+	debugDistanceHeatmap(
+		imageFlat: Uint8Array,
+		width: number,
+		height: number,
+		maxDistance: number
+	): Promise<Uint8Array>;
+
+	/**
+	 * Render binary glyph mask (debug/visualization).
+	 *
+	 * White with coverage-based intensity for glyph pixels,
+	 * transparent for non-glyph pixels.
+	 *
+	 * @returns RGBA pixel data as Uint8Array (width * height * 4)
+	 */
+	debugGlyphMask(
+		imageFlat: Uint8Array,
+		width: number,
+		height: number,
+		maxDistance: number
+	): Promise<Uint8Array>;
+
+	/**
+	 * Render WCAG compliance overlay (debug/visualization).
+	 *
+	 * Green = passing contrast ratio, red = failing.
+	 * Intensity scales with how far above/below threshold.
+	 * Non-glyph pixels are transparent.
+	 *
+	 * @returns RGBA pixel data as Uint8Array (width * height * 4)
+	 */
+	debugWcagCompliance(
+		imageFlat: Uint8Array,
+		width: number,
+		height: number,
+		targetContrast: number,
+		maxDistance: number,
+		sampleDistance: number
+	): Promise<Uint8Array>;
+
 	/** Synchronize all pending GPU operations */
 	sync(): Promise<void>;
 
@@ -218,6 +266,76 @@ function createContext(fut: FutharkModuleInternal): FutharkWebGPUContext {
 				// Free the result array (input is freed in finally)
 				resultArray.free();
 
+				return resultData;
+			} finally {
+				inputArray.free();
+			}
+		},
+
+		async debugDistanceHeatmap(
+			imageFlat: Uint8Array,
+			width: number,
+			height: number,
+			maxDistance: number
+		): Promise<Uint8Array> {
+			const inputArray = fut.u8_1d.from_data(imageFlat, imageFlat.length);
+			try {
+				const [resultArray] = await fut.entry['debug_distance_heatmap'](
+					inputArray,
+					BigInt(width),
+					BigInt(height),
+					maxDistance
+				);
+				const resultData = (await resultArray.values()) as Uint8Array;
+				resultArray.free();
+				return resultData;
+			} finally {
+				inputArray.free();
+			}
+		},
+
+		async debugGlyphMask(
+			imageFlat: Uint8Array,
+			width: number,
+			height: number,
+			maxDistance: number
+		): Promise<Uint8Array> {
+			const inputArray = fut.u8_1d.from_data(imageFlat, imageFlat.length);
+			try {
+				const [resultArray] = await fut.entry['debug_glyph_mask'](
+					inputArray,
+					BigInt(width),
+					BigInt(height),
+					maxDistance
+				);
+				const resultData = (await resultArray.values()) as Uint8Array;
+				resultArray.free();
+				return resultData;
+			} finally {
+				inputArray.free();
+			}
+		},
+
+		async debugWcagCompliance(
+			imageFlat: Uint8Array,
+			width: number,
+			height: number,
+			targetContrast: number,
+			maxDistance: number,
+			sampleDistance: number
+		): Promise<Uint8Array> {
+			const inputArray = fut.u8_1d.from_data(imageFlat, imageFlat.length);
+			try {
+				const [resultArray] = await fut.entry['debug_wcag_compliance'](
+					inputArray,
+					BigInt(width),
+					BigInt(height),
+					targetContrast,
+					maxDistance,
+					sampleDistance
+				);
+				const resultData = (await resultArray.values()) as Uint8Array;
+				resultArray.free();
 				return resultData;
 			} finally {
 				inputArray.free();

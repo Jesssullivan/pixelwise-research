@@ -5,11 +5,15 @@
 	 * Uses TypeScript implementation of WCAG 2.1 contrast calculation.
 	 * The formula matches futhark/wcag.fut for consistency.
 	 *
+	 * Includes a pixel-level WCAG compliance heatmap via Futhark WebGPU
+	 * when available (green = passing, red = failing).
+	 *
 	 * @see futhark/wcag.fut - WCAG contrast calculation reference
 	 */
 
 	import DemoHeader from '$lib/components/demo-layout/DemoHeader.svelte';
 	import ContrastAnalysisWidget from '$lib/components/esdt-demos/ContrastAnalysisWidget.svelte';
+	import WcagComplianceHeatmap from '$lib/components/esdt-demos/WcagComplianceHeatmap.svelte';
 	import Icon from '@iconify/svelte';
 </script>
 
@@ -36,6 +40,9 @@
 
 	<!-- Main Widget -->
 	<ContrastAnalysisWidget showTiming={true} />
+
+	<!-- Pixel-Level WCAG Compliance Heatmap -->
+	<WcagComplianceHeatmap />
 
 	<!-- WCAG Reference -->
 	<div class="bg-surface-50-900 rounded-lg border border-surface-300-600 p-6">
