@@ -10,7 +10,19 @@
  * Run with: just bench-webgpu
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+
+// Mock SvelteKit virtual modules (required for dynamic import of ComputeDispatcher)
+vi.mock('$app/environment', () => ({
+	browser: true
+}));
+
+vi.mock('$lib/pixelwise/shaders/video-capture-esdt.wgsl?raw', () => ({
+	default: '// mock video capture shader'
+}));
+vi.mock('$lib/pixelwise/shaders/video-capture-esdt-fallback.wgsl?raw', () => ({
+	default: '// mock fallback shader'
+}));
 
 /**
  * Benchmark configuration
@@ -141,7 +153,7 @@ async function runBenchmark(
  * Format time for display
  */
 function formatTime(ms: number): string {
-	if (ms < 1) {
+	if (ms < 0.01) {
 		return `${(ms * 1000).toFixed(1)}us`;
 	} else if (ms < 1000) {
 		return `${ms.toFixed(2)}ms`;
@@ -167,10 +179,10 @@ function printResult(result: BenchmarkResult): void {
 }
 
 describe('Futhark WebGPU Performance Benchmarks', () => {
-	// Skip all tests if running in non-browser environment
-	const isBrowser = typeof window !== 'undefined';
+	// Skip if no real WebGPU runtime (jsdom doesn't provide navigator.gpu)
+	const hasWebGPURuntime = typeof navigator !== 'undefined' && 'gpu' in navigator;
 
-	describe.skipIf(!isBrowser)('Pipeline Performance', () => {
+	describe.skipIf(!hasWebGPURuntime)('Pipeline Performance', () => {
 		let dispatcher: any;
 		let webgpuAvailable = false;
 		let futharkWebGPUAvailable = false;

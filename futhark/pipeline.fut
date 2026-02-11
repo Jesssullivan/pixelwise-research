@@ -261,6 +261,119 @@ entry debug_esdt_flat [n]
   let esdt = pass_esdt levels cfg
   in flatten (map (map (\p -> [p.delta_x, p.delta_y])) esdt) |> flatten
 
+-- Debug visualization: Distance heatmap
+-- Maps ESDT distance to a heat color: blue (far) -> green -> yellow -> red (close)
+-- Input: [h*w*4] u8 RGBA, Output: [h*w*4] u8 RGBA heatmap
+entry debug_distance_heatmap [n]
+    (image_flat: [n]u8)
+    (width: i64) (height: i64)
+    (max_distance: f32): []u8 =
+  let image_2d: [height][width]rgba =
+    tabulate_2d height width (\y x ->
+      let idx = (y * width + x) * 4
+      in {
+        r = image_flat[idx],
+        g = image_flat[idx + 1],
+        b = image_flat[idx + 2],
+        a = image_flat[idx + 3]
+      }
+    )
+  let levels = pass_grayscale image_2d
+  let cfg = {max_distance, target_contrast = 7f32, sample_distance = 5f32, use_relaxation = false}
+  let esdt = pass_esdt levels cfg
+  -- Map distance to RGBA heatmap
+  let heatmap = map (map (\px ->
+    let d = distance px
+    let t = f32.min 1f32 (d / max_distance)
+    -- Color ramp: red (0) -> yellow (0.33) -> green (0.66) -> blue (1)
+    let r = u8.f32 (f32.min 255f32 (f32.max 0f32 (
+      if t < 0.5f32 then 255f32 * (1f32 - t * 2f32)
+      else 0f32
+    )))
+    let g = u8.f32 (f32.min 255f32 (f32.max 0f32 (
+      if t < 0.5f32 then 255f32 * t * 2f32
+      else 255f32 * (1f32 - (t - 0.5f32) * 2f32)
+    )))
+    let b = u8.f32 (f32.min 255f32 (f32.max 0f32 (
+      if t < 0.5f32 then 0f32
+      else 255f32 * (t - 0.5f32) * 2f32
+    )))
+    in {r, g, b, a = 255u8}
+  )) esdt
+  in flatten (map (map (\px -> [px.r, px.g, px.b, px.a])) heatmap) |> flatten
+
+-- Debug visualization: Binary glyph mask
+-- White for glyph pixels, transparent elsewhere
+-- Input: [h*w*4] u8 RGBA, Output: [h*w*4] u8 RGBA mask
+entry debug_glyph_mask [n]
+    (image_flat: [n]u8)
+    (width: i64) (height: i64)
+    (max_distance: f32): []u8 =
+  let image_2d: [height][width]rgba =
+    tabulate_2d height width (\y x ->
+      let idx = (y * width + x) * 4
+      in {
+        r = image_flat[idx],
+        g = image_flat[idx + 1],
+        b = image_flat[idx + 2],
+        a = image_flat[idx + 3]
+      }
+    )
+  let levels = pass_grayscale image_2d
+  let cfg = {max_distance, target_contrast = 7f32, sample_distance = 5f32, use_relaxation = false}
+  let esdt = pass_esdt levels cfg
+  let mask = pass_extract_glyphs esdt cfg
+  let result = map (map (\m ->
+    if m.is_glyph
+    then
+      let v = u8.f32 (255f32 * m.coverage)
+      in {r = v, g = v, b = v, a = 255u8}
+    else {r = 0u8, g = 0u8, b = 0u8, a = 0u8}
+  )) mask
+  in flatten (map (map (\px -> [px.r, px.g, px.b, px.a])) result) |> flatten
+
+-- Debug visualization: WCAG compliance heatmap
+-- Green for passing contrast, red for failing, transparent for non-glyph
+-- Input: [h*w*4] u8 RGBA, Output: [h*w*4] u8 RGBA compliance map
+entry debug_wcag_compliance [n]
+    (image_flat: [n]u8)
+    (width: i64) (height: i64)
+    (target_contrast: f32)
+    (max_distance: f32)
+    (sample_distance: f32): []u8 =
+  let cfg = {max_distance, target_contrast, sample_distance, use_relaxation = false}
+  let image_2d: [height][width]rgba =
+    tabulate_2d height width (\y x ->
+      let idx = (y * width + x) * 4
+      in {
+        r = image_flat[idx],
+        g = image_flat[idx + 1],
+        b = image_flat[idx + 2],
+        a = image_flat[idx + 3]
+      }
+    )
+  let levels = pass_grayscale image_2d
+  let esdt = pass_esdt levels cfg
+  let mask = pass_extract_glyphs esdt cfg
+  let backgrounds = pass_sample_background image_2d mask esdt cfg
+  let adjustments = pass_adjust_contrast image_2d mask backgrounds cfg
+  let result = map2 (\row_mask row_adj ->
+    map2 (\m adj ->
+      if !m.is_glyph
+      then {r = 0u8, g = 0u8, b = 0u8, a = 0u8}
+      else if adj.needs_adjustment
+      then
+        -- Failing: red with intensity based on how far below target
+        let ratio = f32.min 1f32 (adj.original_contrast / target_contrast)
+        let intensity = u8.f32 (200f32 + 55f32 * (1f32 - ratio))
+        in {r = intensity, g = 40u8, b = 40u8, a = 200u8}
+      else
+        -- Passing: green
+        {r = 40u8, g = 200u8, b = 40u8, a = 200u8}
+    ) row_mask row_adj
+  ) mask adjustments
+  in flatten (map (map (\px -> [px.r, px.g, px.b, px.a])) result) |> flatten
+
 -- Tests
 
 -- ==

@@ -28,18 +28,27 @@
 	let { initialText = 'Aa', showTiming = true }: Props = $props();
 
 	// Compute dispatcher (handles WebGPU -> WASM -> JS fallback)
-	let dispatcher: ComputeDispatcher | null = null;
+	let dispatcher: ComputeDispatcher | null = $state(null);
 	let dispatcherReady = $state(false);
 
 	// Canvas refs
-	let textCanvas: HTMLCanvasElement | null = null;
-	let vectorCanvas: HTMLCanvasElement | null = null;
+	let textCanvas = $state<HTMLCanvasElement | null>(null);
+	let vectorCanvas = $state<HTMLCanvasElement | null>(null);
+
+	// Visualization modes
+	type VizMode = 'gradient-arrows' | 'distance-heatmap' | 'glyph-mask';
+	const VIZ_MODES: { value: VizMode; label: string; requiresGPU: boolean }[] = [
+		{ value: 'gradient-arrows', label: 'Gradient Arrows (JS)', requiresGPU: false },
+		{ value: 'distance-heatmap', label: 'Distance Heatmap (Futhark)', requiresGPU: true },
+		{ value: 'glyph-mask', label: 'Glyph Mask (Futhark)', requiresGPU: true },
+	];
 
 	// State
 	let inputText = $state(initialText);
 	let useRelaxation = $state(false);
 	let arrowScale = $state(8);
 	let showDistanceMap = $state(true);
+	let vizMode = $state<VizMode>('gradient-arrows');
 
 	// Metrics
 	let processingTimeMs = $state(0);
@@ -213,6 +222,46 @@
 	}
 
 	/**
+	 * Render Futhark GPU visualization (distance heatmap or glyph mask)
+	 */
+	async function renderFutharkVisualization() {
+		if (!dispatcher || !dispatcher.hasFutharkWebGPU || !vectorCanvas) return;
+
+		const data = renderTextToData();
+		if (!data) return;
+
+		const ctx = vectorCanvas.getContext('2d');
+		if (!ctx) return;
+
+		try {
+			const startTime = performance.now();
+
+			let resultRgba: Uint8Array;
+			if (vizMode === 'distance-heatmap') {
+				resultRgba = await dispatcher.debugDistanceHeatmap(data.rgbaData, data.width, data.height, 100);
+			} else {
+				resultRgba = await dispatcher.debugGlyphMask(data.rgbaData, data.width, data.height, 100);
+			}
+
+			const elapsed = performance.now() - startTime;
+			processingTimeMs = elapsed;
+			pixelCount = data.width * data.height;
+
+			// Render to canvas
+			const clampedArr = new Uint8ClampedArray(resultRgba.length);
+			clampedArr.set(resultRgba);
+			const imageData = new ImageData(clampedArr, data.width, data.height);
+			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+			ctx.putImageData(imageData, 0, 0);
+
+			activeBackendLabel = 'Futhark WebGPU';
+			console.log(`[GradientViz] ${vizMode} (Futhark WebGPU): ${pixelCount} pixels in ${processingTimeMs.toFixed(2)}ms`);
+		} catch (error: unknown) {
+			console.error(`[GradientViz] Futhark ${vizMode} failed:`, error);
+		}
+	}
+
+	/**
 	 * Compute ESDT via ComputeDispatcher and visualize
 	 */
 	async function computeESDT() {
@@ -261,19 +310,24 @@
 		// Dependencies
 		inputText;
 		useRelaxation;
+		vizMode;
 
 		if (dispatcherReady) {
-			computeESDT();
+			if (vizMode === 'gradient-arrows') {
+				computeESDT();
+			} else {
+				renderFutharkVisualization();
+			}
 		}
 	});
 
-	// Re-visualize when display options change
+	// Re-visualize when display options change (gradient arrows mode only)
 	$effect(() => {
 		// Dependencies
 		arrowScale;
 		showDistanceMap;
 
-		if (esdtData) {
+		if (esdtData && vizMode === 'gradient-arrows') {
 			visualizeGradients();
 		}
 	});
@@ -320,8 +374,9 @@
 	<div class="p-4 space-y-4">
 		<!-- Text Input -->
 		<div class="flex items-center gap-3">
-			<label class="text-sm text-surface-700-200 w-20">Text</label>
+			<label for="gradient-viz-text" class="text-sm text-surface-700-200 w-20">Text</label>
 			<input
+				id="gradient-viz-text"
 				type="text"
 				bind:value={inputText}
 				class="flex-1 px-3 py-2 rounded bg-surface-100-800 border border-surface-300-600 text-surface-900-50 font-mono"
@@ -329,36 +384,57 @@
 			/>
 		</div>
 
-		<!-- Options -->
-		<div class="flex items-center gap-6">
-			<label class="flex items-center gap-2 text-sm text-surface-700-200">
-				<input
-					type="checkbox"
-					bind:checked={useRelaxation}
-					class="rounded"
-				/>
-				Relaxation pass
-			</label>
-			<label class="flex items-center gap-2 text-sm text-surface-700-200">
-				<input
-					type="checkbox"
-					bind:checked={showDistanceMap}
-					class="rounded"
-				/>
-				Distance map
-			</label>
-			<div class="flex items-center gap-2">
-				<span class="text-sm text-surface-700-200">Arrow scale:</span>
-				<input
-					type="range"
-					min="2"
-					max="16"
-					bind:value={arrowScale}
-					class="w-24"
-				/>
-				<span class="text-xs font-mono text-surface-500-400 w-6">{arrowScale}</span>
-			</div>
+		<!-- Visualization Mode -->
+		<div class="flex items-center gap-3">
+			<label for="gradient-viz-mode" class="text-sm text-surface-700-200 w-20">Mode</label>
+			<select
+				id="gradient-viz-mode"
+				bind:value={vizMode}
+				class="flex-1 px-3 py-2 rounded bg-surface-100-800 border border-surface-300-600 text-surface-900-50 text-sm"
+			>
+				{#each VIZ_MODES as mode}
+					<option
+						value={mode.value}
+						disabled={mode.requiresGPU && !dispatcher?.hasFutharkWebGPU}
+					>
+						{mode.label}{mode.requiresGPU && !dispatcher?.hasFutharkWebGPU ? ' (unavailable)' : ''}
+					</option>
+				{/each}
+			</select>
 		</div>
+
+		<!-- Options (gradient arrows mode) -->
+		{#if vizMode === 'gradient-arrows'}
+			<div class="flex items-center gap-6">
+				<label class="flex items-center gap-2 text-sm text-surface-700-200">
+					<input
+						type="checkbox"
+						bind:checked={useRelaxation}
+						class="rounded"
+					/>
+					Relaxation pass
+				</label>
+				<label class="flex items-center gap-2 text-sm text-surface-700-200">
+					<input
+						type="checkbox"
+						bind:checked={showDistanceMap}
+						class="rounded"
+					/>
+					Distance map
+				</label>
+				<div class="flex items-center gap-2">
+					<span class="text-sm text-surface-700-200">Arrow scale:</span>
+					<input
+						type="range"
+						min="2"
+						max="16"
+						bind:value={arrowScale}
+						class="w-24"
+					/>
+					<span class="text-xs font-mono text-surface-500-400 w-6">{arrowScale}</span>
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Canvas Container -->

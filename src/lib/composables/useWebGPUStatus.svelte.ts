@@ -49,6 +49,11 @@ export interface WebGPUStatus {
 	readonly browserName: string;
 	readonly browserVersion: string;
 	readonly platform: string;
+	readonly isMobile: boolean;
+
+	// Screen capture
+	readonly screenCaptureAvailable: boolean;
+	readonly screenCaptureError: string | null;
 
 	// Derived status
 	readonly isReady: boolean;
@@ -61,6 +66,7 @@ export interface WebGPUStatus {
 
 	// Methods
 	redetect(): Promise<void>;
+	testScreenCapture(): Promise<boolean>;
 }
 
 /**
@@ -78,6 +84,10 @@ export function useWebGPUStatus(): WebGPUStatus {
 		os: 'Unknown',
 		isMobile: false
 	});
+
+	// Screen capture state
+	let screenCaptureAvailable = $state(false);
+	let screenCaptureError = $state<string | null>(null);
 
 	// Derived values using $derived.by()
 	const available = $derived.by(() => {
@@ -171,9 +181,34 @@ export function useWebGPUStatus(): WebGPUStatus {
 		await detect();
 	}
 
+	/**
+	 * Test screen capture permission by requesting and immediately stopping a stream.
+	 * Returns true if permission was granted.
+	 */
+	async function testScreenCapture(): Promise<boolean> {
+		if (!browser) return false;
+
+		try {
+			const stream = await navigator.mediaDevices.getDisplayMedia({
+				video: { width: 1, height: 1 }
+			});
+			// Immediately stop all tracks
+			stream.getTracks().forEach(track => track.stop());
+			screenCaptureAvailable = true;
+			screenCaptureError = null;
+			return true;
+		} catch (err: unknown) {
+			screenCaptureAvailable = false;
+			screenCaptureError = err instanceof Error ? err.message : String(err);
+			return false;
+		}
+	}
+
 	// Initialize detection when hook is first used
 	if (browser) {
 		detect();
+		// Check screen capture API availability (not permission, just API presence)
+		screenCaptureAvailable = typeof navigator?.mediaDevices?.getDisplayMedia === 'function';
 	} else {
 		isDetecting = false;
 	}
@@ -207,6 +242,17 @@ export function useWebGPUStatus(): WebGPUStatus {
 		get platform() {
 			return browserInfo.os;
 		},
+		get isMobile() {
+			return browserInfo.isMobile;
+		},
+
+		// Screen capture
+		get screenCaptureAvailable() {
+			return screenCaptureAvailable;
+		},
+		get screenCaptureError() {
+			return screenCaptureError;
+		},
 
 		// Derived status
 		get isReady() {
@@ -228,7 +274,8 @@ export function useWebGPUStatus(): WebGPUStatus {
 		},
 
 		// Methods
-		redetect
+		redetect,
+		testScreenCapture
 	};
 }
 

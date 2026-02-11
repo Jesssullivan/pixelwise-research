@@ -51,6 +51,8 @@ export interface PipelineResult {
 	processingTime: number;
 	/** Backend used for computation */
 	backend: 'futhark-webgpu' | 'futhark-wasm' | 'js-fallback';
+	/** Raw Uint8Array from Futhark WebGPU (avoids Uint8ClampedArray copy for WebGPU overlay) */
+	_rawBuffer?: Uint8Array;
 }
 
 /**
@@ -470,7 +472,7 @@ export function createComputeDispatcher() {
 		try {
 			// -- Data marshalling (overhead) --
 			const marshalStart = performance.now();
-			const inputData = new Uint8Array(rgbaData);
+			const inputData = new Uint8Array(rgbaData.buffer, rgbaData.byteOffset, rgbaData.byteLength);
 			const marshalTime = performance.now() - marshalStart;
 
 			// -- Core pipeline execution --
@@ -488,23 +490,30 @@ export function createComputeDispatcher() {
 
 			// -- Post-processing (overhead) --
 			const postStart = performance.now();
-			const adjustedPixelsArr = new Uint8ClampedArray(resultData);
 
-			// Count adjusted pixels by comparing input vs output
-			let adjustedCount = 0;
-			for (let i = 0; i < adjustedPixelsArr.length; i += 4) {
+			// Estimate adjusted pixel count by sampling (avoids O(n) comparison loop).
+			// Sample every 64th pixel for a ~1.5% sample — sufficient for metrics display.
+			const totalPixels = width * height;
+			const sampleStride = 64;
+			let sampleHits = 0;
+			let sampleCount = 0;
+			for (let i = 0; i < resultData.length; i += sampleStride * 4) {
 				if (
-					adjustedPixelsArr[i] !== rgbaData[i] ||
-					adjustedPixelsArr[i + 1] !== rgbaData[i + 1] ||
-					adjustedPixelsArr[i + 2] !== rgbaData[i + 2]
+					resultData[i] !== rgbaData[i] ||
+					resultData[i + 1] !== rgbaData[i + 1] ||
+					resultData[i + 2] !== rgbaData[i + 2]
 				) {
-					adjustedCount++;
+					sampleHits++;
 				}
+				sampleCount++;
 			}
+			const adjustedCount = sampleCount > 0
+				? Math.round((sampleHits / sampleCount) * totalPixels)
+				: 0;
+
 			const postTime = performance.now() - postStart;
 
 			const totalTime = performance.now() - totalStart;
-			const totalPixels = width * height;
 			const overheadTime = marshalTime + postTime;
 
 			// Record metrics
@@ -521,12 +530,16 @@ export function createComputeDispatcher() {
 				timestamp: performance.now()
 			});
 
+			// Return Uint8Array directly — callers using WebGPUOverlayCompositor
+			// can pass this to updateTextureFromBuffer() without copying.
+			// For WebGL2 fallback, the Uint8ClampedArray view is created lazily.
 			return {
-				adjustedPixels: adjustedPixelsArr,
+				adjustedPixels: new Uint8ClampedArray(resultData.buffer, resultData.byteOffset, resultData.byteLength),
 				adjustedCount,
 				processingTime: totalTime,
-				backend: 'futhark-webgpu'
-			};
+				backend: 'futhark-webgpu',
+				_rawBuffer: resultData
+			} as PipelineResult;
 		} catch (err: unknown) {
 			console.error('[ComputeDispatcher] Futhark WebGPU pipeline failed:', err);
 			throw err;
@@ -1022,6 +1035,64 @@ export function createComputeDispatcher() {
 	}
 
 	/**
+	 * Render ESDT distances as a heatmap overlay (Futhark WebGPU only).
+	 */
+	async function debugDistanceHeatmap(
+		rgbaData: Uint8ClampedArray,
+		width: number,
+		height: number,
+		maxDistance: number
+	): Promise<Uint8Array> {
+		if (!futharkWebGPUContext) {
+			throw new Error('Futhark WebGPU context not initialized');
+		}
+		const inputData = new Uint8Array(rgbaData.buffer, rgbaData.byteOffset, rgbaData.byteLength);
+		const result = await futharkWebGPUContext.debugDistanceHeatmap(inputData, width, height, maxDistance);
+		await futharkWebGPUContext.sync();
+		return result;
+	}
+
+	/**
+	 * Render binary glyph mask overlay (Futhark WebGPU only).
+	 */
+	async function debugGlyphMask(
+		rgbaData: Uint8ClampedArray,
+		width: number,
+		height: number,
+		maxDistance: number
+	): Promise<Uint8Array> {
+		if (!futharkWebGPUContext) {
+			throw new Error('Futhark WebGPU context not initialized');
+		}
+		const inputData = new Uint8Array(rgbaData.buffer, rgbaData.byteOffset, rgbaData.byteLength);
+		const result = await futharkWebGPUContext.debugGlyphMask(inputData, width, height, maxDistance);
+		await futharkWebGPUContext.sync();
+		return result;
+	}
+
+	/**
+	 * Render WCAG compliance overlay (Futhark WebGPU only).
+	 */
+	async function debugWcagCompliance(
+		rgbaData: Uint8ClampedArray,
+		width: number,
+		height: number,
+		targetContrast: number,
+		maxDistance: number,
+		sampleDistance: number
+	): Promise<Uint8Array> {
+		if (!futharkWebGPUContext) {
+			throw new Error('Futhark WebGPU context not initialized');
+		}
+		const inputData = new Uint8Array(rgbaData.buffer, rgbaData.byteOffset, rgbaData.byteLength);
+		const result = await futharkWebGPUContext.debugWcagCompliance(
+			inputData, width, height, targetContrast, maxDistance, sampleDistance
+		);
+		await futharkWebGPUContext.sync();
+		return result;
+	}
+
+	/**
 	 * Return the most recent pipeline metrics entry, or null if none recorded.
 	 */
 	function getLatestMetrics(): PipelineMetrics | null {
@@ -1042,14 +1113,26 @@ export function createComputeDispatcher() {
 		metricsHistory.length = 0;
 	}
 
+	/**
+	 * Get the shared GPUDevice (from video capture context) for use by
+	 * other WebGPU consumers like the WebGPU overlay compositor.
+	 */
+	function getDevice(): GPUDevice | null {
+		return videoCaptureContext?.device ?? null;
+	}
+
 	return {
 		initialize,
 		computeEsdt,
 		runFullPipeline,
 		processVideoFrame,
 		hasVideoCapture,
+		getDevice,
 		getDistance,
 		getGradient,
+		debugDistanceHeatmap,
+		debugGlyphMask,
+		debugWcagCompliance,
 		destroy,
 		switchBackend,
 		getLatestMetrics,

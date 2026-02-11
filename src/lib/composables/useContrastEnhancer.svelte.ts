@@ -25,6 +25,7 @@ import { browser } from '$app/environment';
 import { createViewportCapture } from '$lib/core/ViewportCapture';
 import { createComputeDispatcher, DEFAULT_CONFIG } from '$lib/core/ComputeDispatcher';
 import { createOverlayCompositor } from '$lib/core/OverlayCompositor';
+import { createWebGPUOverlayCompositor } from '$lib/core/WebGPUOverlayCompositor';
 
 export interface ContrastEnhancerOptions {
 	/** Target WCAG contrast ratio (default: 7.0 for AAA) */
@@ -85,7 +86,11 @@ export function useContrastEnhancer(options: ContrastEnhancerOptions = {}): Cont
 	// Core modules
 	const capture = createViewportCapture();
 	const compute = createComputeDispatcher();
-	const overlay = createOverlayCompositor();
+	// Overlay: try WebGPU first (shared device), fall back to WebGL2
+	const webgpuOverlay = createWebGPUOverlayCompositor();
+	const webgl2Overlay = createOverlayCompositor();
+	let overlay: ReturnType<typeof createOverlayCompositor> | ReturnType<typeof createWebGPUOverlayCompositor> = webgl2Overlay;
+	let usingWebGPUOverlay = false;
 
 	// Configuration
 	let config = {
@@ -125,16 +130,27 @@ export function useContrastEnhancer(options: ContrastEnhancerOptions = {}): Cont
 		if (isInitialized) return true;
 
 		try {
-			// Initialize compute dispatcher (Futhark WASM)
+			// Initialize compute dispatcher (tries Futhark WebGPU, then WASM)
 			const computeOk = await compute.initialize('auto');
 			if (!computeOk) {
 				throw new Error('Failed to initialize compute dispatcher');
 			}
 
-			// Initialize overlay compositor (WebGL2)
-			const overlayOk = overlay.initialize({ debug });
-			if (!overlayOk) {
-				throw new Error('Failed to initialize overlay compositor');
+			// Try WebGPU overlay first (shares device with compute dispatcher)
+			const sharedDevice = compute.getDevice();
+			const webgpuOk = await webgpuOverlay.initialize({ debug }, sharedDevice ?? undefined);
+			if (webgpuOk) {
+				overlay = webgpuOverlay;
+				usingWebGPUOverlay = true;
+				console.log('[ContrastEnhancer] Using WebGPU overlay compositor');
+			} else {
+				// Fall back to WebGL2 overlay
+				const webgl2Ok = webgl2Overlay.initialize({ debug });
+				if (!webgl2Ok) {
+					throw new Error('Failed to initialize overlay compositor');
+				}
+				overlay = webgl2Overlay;
+				console.log('[ContrastEnhancer] Using WebGL2 overlay compositor (fallback)');
 			}
 
 			// Check if Screen Capture API is supported
@@ -198,7 +214,12 @@ export function useContrastEnhancer(options: ContrastEnhancerOptions = {}): Cont
 
 			// 3. Update overlay with adjusted pixels
 			if (result.adjustedCount > 0) {
-				overlay.updateTexture(result.adjustedPixels, captureResult.width, captureResult.height);
+				// Use raw Uint8Array path for WebGPU overlay (avoids Uint8ClampedArray copy)
+				if (usingWebGPUOverlay && result._rawBuffer) {
+					webgpuOverlay.updateTextureFromBuffer(result._rawBuffer, captureResult.width, captureResult.height);
+				} else {
+					overlay.updateTexture(result.adjustedPixels, captureResult.width, captureResult.height);
+				}
 				overlay.render();
 				overlay.show();
 			} else {
@@ -288,7 +309,12 @@ export function useContrastEnhancer(options: ContrastEnhancerOptions = {}): Cont
 		stop();
 		capture.destroy();
 		compute.destroy();
-		overlay.destroy();
+		// Destroy whichever overlay is active (only one is initialized)
+		if (usingWebGPUOverlay) {
+			webgpuOverlay.destroy();
+		} else {
+			webgl2Overlay.destroy();
+		}
 		isInitialized = false;
 	}
 
