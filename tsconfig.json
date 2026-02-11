@@ -8,8 +8,7 @@
 		"resolveJsonModule": true,
 		"skipLibCheck": true,
 		"allowSyntheticDefaultImports": true,
-		"noImplicitAny": false,  // Allow implicit any for Svelte 5 migration
-		"strict": false,  // Temporarily disable for migration
+		"strict": true,
 		"sourceMap": true,
 		"target": "ES2018",
 		"module": "ESNext",
@@ -22,12 +21,9 @@
 		"allowImportingTsExtensions": true,
 		"noEmit": true,
 		"moduleDetection": "force",
-		// Fix Svelte 5 module issues - DISABLE TYPESCRIPT CHECKING
+		// Svelte 5 module resolution workarounds
 		"skipDefaultLibCheck": true,
 		"noResolve": false,
-		"strictNullChecks": false,
-		"noImplicitReturns": false,
-		"noImplicitThis": false,
 		// suppressImplicitAnyIndexErrors removed in TypeScript 7 - use noUncheckedIndexedAccess instead
 		"noLib": false
 	}

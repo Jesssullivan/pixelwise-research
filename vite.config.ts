@@ -65,6 +65,8 @@ function skeletonTailwindV4Compat(): Plugin {
 					map: null
 				};
 			}
+
+			return undefined;
 		}
 	};
 }

@@ -59,7 +59,7 @@ async function initFuthark(): Promise<boolean> {
 		}
 
 		throw new Error('Futhark module missing newFutharkContext');
-	} catch (error) {
+	} catch (error: unknown) {
 		console.error('[Worker] Failed to initialize Futhark WASM:', error);
 		return false;
 	}
@@ -275,7 +275,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 				respond(id, false, undefined, `Unknown message type: ${type}`);
 			}
 		}
-	} catch (error) {
+	} catch (error: unknown) {
 		console.error('[Worker] Error handling message:', error);
 		respond(id, false, undefined, error instanceof Error ? error.message : String(error));
 	}

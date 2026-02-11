@@ -150,7 +150,7 @@ export function useContrastEnhancer(options: ContrastEnhancerOptions = {}): Cont
 			}
 
 			return true;
-		} catch (err) {
+		} catch (err: unknown) {
 			error = err instanceof Error ? err : new Error(String(err));
 			console.error('ContrastEnhancer initialization failed:', err);
 			return false;
@@ -220,7 +220,7 @@ export function useContrastEnhancer(options: ContrastEnhancerOptions = {}): Cont
 				adjustedPixelCount: result.adjustedCount,
 				backend: result.backend
 			};
-		} catch (err) {
+		} catch (err: unknown) {
 			error = err instanceof Error ? err : new Error(String(err));
 			console.error('Frame processing error:', err);
 		}

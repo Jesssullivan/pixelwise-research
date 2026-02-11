@@ -124,11 +124,17 @@ export async function detectWebGPU(): Promise<{ available: boolean; adapter: str
 		let info: GPUAdapterInfo | null = null;
 
 		// Type-safe check for newer WebGPU API methods
-		const adapterAny = adapter as any;
+		// GPUAdapter may have requestAdapterInfo in newer specs (v1.1+)
+		// and isFallbackAdapter as a property
+		interface ExtendedGPUAdapter extends GPUAdapter {
+			requestAdapterInfo?: () => Promise<GPUAdapterInfo>;
+			isFallbackAdapter?: boolean;
+		}
+		const extendedAdapter = adapter as ExtendedGPUAdapter;
 
-		if (typeof adapterAny.requestAdapterInfo === 'function') {
+		if (typeof extendedAdapter.requestAdapterInfo === 'function') {
 			try {
-				info = await adapterAny.requestAdapterInfo();
+				info = await extendedAdapter.requestAdapterInfo();
 				adapterInfo = `${info.vendor} ${info.architecture} (${info.device})`;
 
 				console.log('[featureDetection] WebGPU Adapter Details:', {
@@ -137,14 +143,14 @@ export async function detectWebGPU(): Promise<{ available: boolean; adapter: str
 					device: info.device,
 					description: info.description,
 					features: Array.from(adapter.features),
-					isFallbackAdapter: adapterAny.isFallbackAdapter ?? false,
+					isFallbackAdapter: extendedAdapter.isFallbackAdapter ?? false,
 					limits: {
 						maxTextureDimension2D: adapter.limits.maxTextureDimension2D,
 						maxBufferSize: adapter.limits.maxBufferSize,
 						maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize
 					}
 				});
-			} catch (error) {
+			} catch (error: unknown) {
 				console.warn('[featureDetection] requestAdapterInfo() failed:', error);
 				adapterInfo = 'WebGPU Adapter (info unavailable)';
 			}
@@ -156,7 +162,7 @@ export async function detectWebGPU(): Promise<{ available: boolean; adapter: str
 			// Log basic adapter info without requestAdapterInfo()
 			console.log('[featureDetection] WebGPU Adapter Details (basic):', {
 				features: Array.from(adapter.features),
-				isFallbackAdapter: adapterAny.isFallbackAdapter ?? false,
+				isFallbackAdapter: extendedAdapter.isFallbackAdapter ?? false,
 				limits: {
 					maxTextureDimension2D: adapter.limits.maxTextureDimension2D,
 					maxBufferSize: adapter.limits.maxBufferSize,
@@ -183,7 +189,7 @@ export async function detectWebGPU(): Promise<{ available: boolean; adapter: str
 					maxBufferSize: 256 * 1024 * 1024 // 256MB for pixel buffer
 				}
 			});
-		} catch (error) {
+		} catch (error: unknown) {
 			console.error('[featureDetection] WebGPU: Device request failed:', error);
 			console.log('[featureDetection] This may indicate insufficient GPU limits');
 			return { available: false, adapter: adapterInfo };
@@ -198,7 +204,7 @@ export async function detectWebGPU(): Promise<{ available: boolean; adapter: str
 			});
 			testBuffer.unmap();
 			testBuffer.destroy();
-		} catch (e) {
+		} catch (e: unknown) {
 			console.warn('[featureDetection] WebGPU: Buffer mapping not supported');
 			return { available: false, adapter: adapterInfo };
 		}
@@ -208,7 +214,7 @@ export async function detectWebGPU(): Promise<{ available: boolean; adapter: str
 
 		console.log(`[featureDetection] WebGPU: Available (${adapterInfo})`);
 		return { available: true, adapter: adapterInfo };
-	} catch (e) {
+	} catch (e: unknown) {
 		console.warn('[featureDetection] WebGPU detection failed:', e);
 		return { available: false, adapter: null };
 	}
@@ -285,7 +291,7 @@ export function detectWASMSimd(): boolean {
 		}
 
 		return isValid;
-	} catch (e) {
+	} catch (e: unknown) {
 		console.log('[featureDetection] WASM SIMD not available:', e);
 		return false;
 	}
@@ -306,7 +312,7 @@ export function detectWebGL2(): boolean {
 		if (!gl) return false;
 
 		// Check for required extensions
-		const requiredExtensions = [
+		const requiredExtensions: string[] = [
 			// EXT_color_buffer_float is nice but not required
 		];
 
@@ -332,7 +338,7 @@ export function detectWebGL2(): boolean {
 		if (loseContext) loseContext.loseContext();
 
 		return success;
-	} catch (e) {
+	} catch (e: unknown) {
 		console.warn('[featureDetection] WebGL2 detection failed:', e);
 		return false;
 	}
@@ -352,7 +358,7 @@ export function detectWASM(): boolean {
 			Uint8Array.of(0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00)
 		);
 		return module instanceof WebAssembly.Module;
-	} catch (e) {
+	} catch (e: unknown) {
 		console.warn('[featureDetection] WASM detection failed:', e);
 		return false;
 	}
@@ -368,7 +374,7 @@ export function detectSharedArrayBuffer(): boolean {
 	try {
 		return typeof SharedArrayBuffer !== 'undefined' &&
 			new SharedArrayBuffer(1) instanceof SharedArrayBuffer;
-	} catch (e) {
+	} catch (e: unknown) {
 		return false;
 	}
 }
@@ -382,7 +388,7 @@ export function detectOffscreenCanvas(): boolean {
 	try {
 		return typeof OffscreenCanvas !== 'undefined' &&
 			new OffscreenCanvas(1, 1) instanceof OffscreenCanvas;
-	} catch (e) {
+	} catch (e: unknown) {
 		return false;
 	}
 }
@@ -423,7 +429,7 @@ export function estimateGPUTier(): 0 | 1 | 2 | 3 {
 		if (maxTextureSize >= 4096) return 1;
 
 		return 1; // Default to low tier
-	} catch (e) {
+	} catch (e: unknown) {
 		return 0;
 	}
 }

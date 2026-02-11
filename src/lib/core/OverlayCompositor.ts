@@ -220,7 +220,7 @@ export function createOverlayCompositor() {
 			window.addEventListener('resize', resize);
 
 			return true;
-		} catch (err) {
+		} catch (err: unknown) {
 			console.error('OverlayCompositor initialization failed:', err);
 			destroy();
 			return false;

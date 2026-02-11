@@ -386,9 +386,9 @@ export class BufferRing {
 		// Destroy old buffers
 		this.destroy();
 
-		// Update dimensions
-		(this as { width: number }).width = width;
-		(this as { height: number }).height = height;
+		// Update dimensions (private fields reassigned via cast through unknown)
+		(this as unknown as { width: number }).width = width;
+		(this as unknown as { height: number }).height = height;
 
 		// Create new buffers
 		this.buffers.length = 0;

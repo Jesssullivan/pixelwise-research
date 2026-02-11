@@ -276,11 +276,11 @@ export class GlyphFrameSynchronizer {
 			// Get stacking info
 			const stackingInfo = this.stackingResolver.resolve(element);
 
-			// Extract glyphs
+			// Extract glyphs - map StackingInfo.effectiveZ to the zIndex expected by GlyphExtractor
 			const glyphs = this.extractor.extractExtended(
 				element,
 				this.transformer,
-				() => stackingInfo,
+				() => ({ zIndex: stackingInfo.effectiveZ, contextId: stackingInfo.contextId }),
 				regionId
 			);
 

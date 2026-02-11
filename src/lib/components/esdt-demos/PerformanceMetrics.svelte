@@ -191,7 +191,7 @@
 
 			// Start the benchmark loop
 			benchmarkLoop();
-		} catch (err) {
+		} catch (err: unknown) {
 			isInitializing = false;
 			initError = err instanceof Error ? err.message : String(err);
 			console.error('[PerformanceMetrics] Benchmark init failed:', err);
@@ -205,7 +205,7 @@
 			await dispatcher.runFullPipeline(testImage, testWidth, testHeight);
 			frameCount++;
 			metrics = deriveMetrics();
-		} catch (err) {
+		} catch (err: unknown) {
 			console.error('[PerformanceMetrics] Pipeline error:', err);
 		}
 

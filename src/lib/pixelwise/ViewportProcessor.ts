@@ -225,7 +225,7 @@ export class ViewportProcessor {
 					processed: true,
 					timestamp: Date.now()
 				});
-			} catch (error) {
+			} catch (error: unknown) {
 				console.warn('[ViewportProcessor] Failed to process element:', error);
 			}
 		}
@@ -278,14 +278,15 @@ export class ViewportProcessor {
 	 * Observe text elements within a container
 	 */
 	private observeTextElements(root: HTMLElement): void {
-		if (!this.observer) return;
+		const observer = this.observer;
+		if (!observer) return;
 
 		const textElements = root.querySelectorAll<HTMLElement>(TEXT_ELEMENT_SELECTOR);
-		textElements.forEach((el) => this.observer!.observe(el));
+		textElements.forEach((el) => observer.observe(el));
 
 		// Also check if root itself is a text element
 		if (root.matches(TEXT_ELEMENT_SELECTOR)) {
-			this.observer.observe(root);
+			observer.observe(root);
 		}
 	}
 

@@ -101,29 +101,28 @@ interface FutharkArray {
 
 /**
  * WebGPU context for video capture pipeline (uses hand-written shaders
- * since Futhark WebGPU doesn't support external textures yet)
+ * since Futhark WebGPU doesn't support external textures yet).
+ *
+ * The shaders only extract RGBA from the video texture; all further
+ * processing (grayscale, Sobel, ESDT, WCAG) goes through runFullPipeline().
  */
 interface VideoCaptureContext {
 	device: GPUDevice;
 	adapter: GPUAdapter;
-	videoCaptureEsdtModule: GPUShaderModule;
-	videoCaptureEsdtPipeline: GPUComputePipeline;
+	videoCapturePipeline: GPUComputePipeline;
 	videoCaptureLayout: GPUBindGroupLayout;
 	hasExternalTexture: boolean;
 	sampler: GPUSampler;
 }
 
 /**
- * Result of processing a video frame
+ * Result of processing a video frame.
+ *
+ * Now returns a PipelineResult (same as runFullPipeline) since the
+ * video capture shader only extracts RGBA and delegates all further
+ * processing to the unified Futhark pipeline.
  */
-export interface VideoCaptureResult {
-	grayscaleBuffer: GPUBuffer;
-	gradientXBuffer: GPUBuffer;
-	gradientYBuffer: GPUBuffer;
-	width: number;
-	height: number;
-	processingTime: number;
-}
+export type VideoCaptureResult = PipelineResult;
 
 /**
  * Creates a compute dispatcher for the ESDT/WCAG pipeline.
@@ -155,12 +154,12 @@ export function createComputeDispatcher() {
 		const hasExternalTexture = detectImportExternalTexture();
 		const shaderCode = hasExternalTexture ? videoCaptureEsdtShader : videoCaptureEsdtFallbackShader;
 
-		const videoCaptureEsdtModule = device.createShaderModule({
-			label: 'video-capture-esdt',
+		const shaderModule = device.createShaderModule({
+			label: 'video-capture-rgba',
 			code: shaderCode
 		});
 
-		const info = await videoCaptureEsdtModule.getCompilationInfo();
+		const info = await shaderModule.getCompilationInfo();
 		for (const msg of info.messages) {
 			if (msg.type === 'error') {
 				console.error('[ComputeDispatcher] Video capture shader error:', msg.message);
@@ -176,6 +175,7 @@ export function createComputeDispatcher() {
 			addressModeV: 'clamp-to-edge'
 		});
 
+		// Simplified layout: sampler, texture, rgba_output, params
 		const videoCaptureLayout = device.createBindGroupLayout({
 			label: 'video-capture-layout',
 			entries: [
@@ -197,28 +197,18 @@ export function createComputeDispatcher() {
 				{
 					binding: 3,
 					visibility: GPUShaderStage.COMPUTE,
-					buffer: { type: 'storage' }
-				},
-				{
-					binding: 4,
-					visibility: GPUShaderStage.COMPUTE,
-					buffer: { type: 'storage' }
-				},
-				{
-					binding: 5,
-					visibility: GPUShaderStage.COMPUTE,
 					buffer: { type: 'uniform' }
 				}
 			]
 		});
 
-		const videoCaptureEsdtPipeline = device.createComputePipeline({
-			label: 'video-capture-esdt-pipeline',
+		const videoCapturePipeline = device.createComputePipeline({
+			label: 'video-capture-rgba-pipeline',
 			layout: device.createPipelineLayout({
 				bindGroupLayouts: [videoCaptureLayout]
 			}),
 			compute: {
-				module: videoCaptureEsdtModule,
+				module: shaderModule,
 				entryPoint: 'main'
 			}
 		});
@@ -230,8 +220,7 @@ export function createComputeDispatcher() {
 		return {
 			device,
 			adapter,
-			videoCaptureEsdtModule,
-			videoCaptureEsdtPipeline,
+			videoCapturePipeline,
 			videoCaptureLayout,
 			hasExternalTexture,
 			sampler
@@ -274,12 +263,12 @@ export function createComputeDispatcher() {
 						console.log('[ComputeDispatcher] Video capture pipeline initialized');
 					}
 				}
-			} catch (err) {
+			} catch (err: unknown) {
 				console.warn('[ComputeDispatcher] Video capture initialization failed (optional):', err);
 			}
 
 			return true;
-		} catch (err) {
+		} catch (err: unknown) {
 			console.warn('[ComputeDispatcher] Futhark WebGPU initialization failed:', err);
 			return false;
 		}
@@ -301,7 +290,7 @@ export function createComputeDispatcher() {
 			}
 
 			throw new Error('Futhark module missing newFutharkContext');
-		} catch (err) {
+		} catch (err: unknown) {
 			console.warn('Futhark WASM initialization failed:', err);
 			initializationError = err instanceof Error ? err : new Error(String(err));
 			return false;
@@ -538,7 +527,7 @@ export function createComputeDispatcher() {
 				processingTime: totalTime,
 				backend: 'futhark-webgpu'
 			};
-		} catch (err) {
+		} catch (err: unknown) {
 			console.error('[ComputeDispatcher] Futhark WebGPU pipeline failed:', err);
 			throw err;
 		}
@@ -719,7 +708,7 @@ export function createComputeDispatcher() {
 		if (futharkWebGPUContext) {
 			try {
 				return await runFullPipelineFutharkWebGPU(rgbaData, width, height, fullConfig);
-			} catch (err) {
+			} catch (err: unknown) {
 				console.warn('[ComputeDispatcher] Futhark WebGPU pipeline failed, falling back:', err);
 			}
 		}
@@ -727,7 +716,7 @@ export function createComputeDispatcher() {
 		// Fall back to CPU processing (Futhark WASM for ESDT, or pure JS)
 		try {
 			return await runFullPipelineCPU(rgbaData, width, height, fullConfig);
-		} catch (err) {
+		} catch (err: unknown) {
 			console.error('[ComputeDispatcher] CPU pipeline failed:', err);
 			// Last resort: return original data unmodified
 			recordMetrics({
@@ -752,18 +741,26 @@ export function createComputeDispatcher() {
 	}
 
 	/**
-	 * Process a video frame for ESDT pipeline
+	 * Process a video frame through the full contrast enhancement pipeline.
 	 *
-	 * Uses hand-written WGSL shaders for video capture since Futhark WebGPU
-	 * doesn't support GPUExternalTexture.
+	 * Steps:
+	 * 1. Run minimal WGSL shader to extract RGBA from video texture
+	 * 2. Read RGBA data back from GPU
+	 * 3. Feed through runFullPipeline() (Futhark WebGPU -> WASM -> JS)
+	 *
+	 * Uses hand-written WGSL only for video texture import (GPUExternalTexture
+	 * is not supported by Futhark). All grayscale, Sobel, ESDT, and WCAG
+	 * processing is delegated to the unified Futhark pipeline.
 	 */
-	async function processVideoFrame(video: HTMLVideoElement): Promise<VideoCaptureResult | null> {
+	async function processVideoFrame(
+		video: HTMLVideoElement,
+		config: Partial<ComputeConfig> = {}
+	): Promise<VideoCaptureResult | null> {
 		if (!videoCaptureContext) {
 			return null;
 		}
 
-		const startTime = performance.now();
-		const { device, videoCaptureEsdtPipeline, videoCaptureLayout, hasExternalTexture, sampler } =
+		const { device, videoCapturePipeline, videoCaptureLayout, hasExternalTexture, sampler } =
 			videoCaptureContext;
 
 		const width = video.videoWidth;
@@ -775,34 +772,22 @@ export function createComputeDispatcher() {
 
 		const pixelCount = width * height;
 
-		const grayscaleBuffer = device.createBuffer({
-			label: 'video-grayscale',
+		// Single RGBA output buffer (u32 per pixel)
+		const rgbaBuffer = device.createBuffer({
+			label: 'video-rgba-output',
 			size: pixelCount * 4,
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
 		});
 
-		const gradientXBuffer = device.createBuffer({
-			label: 'video-gradient-x',
-			size: pixelCount * 4,
-			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-		});
-
-		const gradientYBuffer = device.createBuffer({
-			label: 'video-gradient-y',
-			size: pixelCount * 4,
-			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-		});
-
+		// Params buffer: just width and height (8 bytes, padded to 8 for alignment)
 		const paramsBuffer = device.createBuffer({
 			label: 'video-capture-params',
-			size: 16,
+			size: 8,
 			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 		});
 
-		const params = new ArrayBuffer(16);
-		new Uint32Array(params, 0, 2).set([width, height]);
-		new Float32Array(params, 8, 1).set([window.devicePixelRatio || 1]);
-		device.queue.writeBuffer(paramsBuffer, 0, params);
+		const paramsData = new Uint32Array([width, height]);
+		device.queue.writeBuffer(paramsBuffer, 0, paramsData);
 
 		let bindGroup: GPUBindGroup;
 
@@ -818,10 +803,8 @@ export function createComputeDispatcher() {
 				entries: [
 					{ binding: 0, resource: sampler },
 					{ binding: 1, resource: externalTexture },
-					{ binding: 2, resource: { buffer: grayscaleBuffer } },
-					{ binding: 3, resource: { buffer: gradientXBuffer } },
-					{ binding: 4, resource: { buffer: gradientYBuffer } },
-					{ binding: 5, resource: { buffer: paramsBuffer } }
+					{ binding: 2, resource: { buffer: rgbaBuffer } },
+					{ binding: 3, resource: { buffer: paramsBuffer } }
 				]
 			});
 		} else {
@@ -847,36 +830,53 @@ export function createComputeDispatcher() {
 				entries: [
 					{ binding: 0, resource: sampler },
 					{ binding: 1, resource: fallbackTexture.createView() },
-					{ binding: 2, resource: { buffer: grayscaleBuffer } },
-					{ binding: 3, resource: { buffer: gradientXBuffer } },
-					{ binding: 4, resource: { buffer: gradientYBuffer } },
-					{ binding: 5, resource: { buffer: paramsBuffer } }
+					{ binding: 2, resource: { buffer: rgbaBuffer } },
+					{ binding: 3, resource: { buffer: paramsBuffer } }
 				]
 			});
 		}
 
+		// Step 1: Run minimal texture-to-RGBA shader
 		const encoder = device.createCommandEncoder({ label: 'video-capture-encoder' });
 		const pass = encoder.beginComputePass({ label: 'video-capture-pass' });
-		pass.setPipeline(videoCaptureEsdtPipeline);
+		pass.setPipeline(videoCapturePipeline);
 		pass.setBindGroup(0, bindGroup);
 		pass.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 8));
 		pass.end();
 
+		// Copy RGBA data to a readable staging buffer
+		const stagingBuffer = device.createBuffer({
+			label: 'video-rgba-staging',
+			size: pixelCount * 4,
+			usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+		});
+		encoder.copyBufferToBuffer(rgbaBuffer, 0, stagingBuffer, 0, pixelCount * 4);
+
 		device.queue.submit([encoder.finish()]);
 		await device.queue.onSubmittedWorkDone();
 
+		// Step 2: Read back RGBA data
+		await stagingBuffer.mapAsync(GPUMapMode.READ);
+		const rgbaU32 = new Uint32Array(stagingBuffer.getMappedRange().slice(0));
+		stagingBuffer.unmap();
+
+		// Convert packed u32 to Uint8ClampedArray (RGBA byte order)
+		const rgbaData = new Uint8ClampedArray(pixelCount * 4);
+		for (let i = 0; i < pixelCount; i++) {
+			const packed = rgbaU32[i];
+			rgbaData[i * 4] = packed & 0xff; // R
+			rgbaData[i * 4 + 1] = (packed >> 8) & 0xff; // G
+			rgbaData[i * 4 + 2] = (packed >> 16) & 0xff; // B
+			rgbaData[i * 4 + 3] = (packed >> 24) & 0xff; // A
+		}
+
+		// Cleanup GPU resources
+		rgbaBuffer.destroy();
 		paramsBuffer.destroy();
+		stagingBuffer.destroy();
 
-		const processingTime = performance.now() - startTime;
-
-		return {
-			grayscaleBuffer,
-			gradientXBuffer,
-			gradientYBuffer,
-			width,
-			height,
-			processingTime
-		};
+		// Step 3: Feed through unified Futhark pipeline
+		return runFullPipeline(rgbaData, width, height, config);
 	}
 
 	/**
@@ -942,7 +942,7 @@ export function createComputeDispatcher() {
 		if (futharkWebGPUContext && rgbaData) {
 			try {
 				return await computeEsdtWebGPU(rgbaData, width, height, maxDistance);
-			} catch (err) {
+			} catch (err: unknown) {
 				console.warn('[ComputeDispatcher] WebGPU ESDT failed, falling back:', err);
 			}
 		}

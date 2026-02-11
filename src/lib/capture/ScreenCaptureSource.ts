@@ -237,11 +237,17 @@ export class ScreenCaptureSource {
 
 			// Wait for video to be ready
 			await new Promise<void>((resolve, reject) => {
+				const video = this.video;
+				if (!video) {
+					reject(new Error('Video element was destroyed during setup'));
+					return;
+				}
+
 				const timeout = setTimeout(() => {
 					reject(new Error('Video element failed to load within timeout'));
 				}, 10000);
 
-				this.video!.addEventListener(
+				video.addEventListener(
 					'loadedmetadata',
 					() => {
 						clearTimeout(timeout);
@@ -250,7 +256,7 @@ export class ScreenCaptureSource {
 					{ once: true }
 				);
 
-				this.video!.addEventListener(
+				video.addEventListener(
 					'error',
 					(e) => {
 						clearTimeout(timeout);
@@ -275,7 +281,7 @@ export class ScreenCaptureSource {
 			console.log(
 				`[ScreenCaptureSource] Capture started: ${this.video.videoWidth}x${this.video.videoHeight}`
 			);
-		} catch (err) {
+		} catch (err: unknown) {
 			this._state = 'error';
 			this.errorMessage = err instanceof Error ? err.message : String(err);
 

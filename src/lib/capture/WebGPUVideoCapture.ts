@@ -174,7 +174,7 @@ export class WebGPUVideoCapture {
 					height,
 					isFallback: false
 				};
-			} catch (err) {
+			} catch (err: unknown) {
 				console.warn('[WebGPUVideoCapture] importExternalTexture failed, using fallback:', err);
 				// Fall through to fallback
 			}
