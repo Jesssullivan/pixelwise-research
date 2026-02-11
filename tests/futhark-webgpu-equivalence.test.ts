@@ -16,7 +16,20 @@
  *   - Various image patterns are handled properly
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+
+// Mock SvelteKit virtual modules (required for dynamic import of ComputeDispatcher)
+vi.mock('$app/environment', () => ({
+	browser: true
+}));
+
+vi.mock('$lib/pixelwise/shaders/video-capture-esdt.wgsl?raw', () => ({
+	default: '// mock video capture shader'
+}));
+vi.mock('$lib/pixelwise/shaders/video-capture-esdt-fallback.wgsl?raw', () => ({
+	default: '// mock fallback shader'
+}));
+
 
 /**
  * Test image generator
@@ -162,10 +175,10 @@ function calculateImageStats(data: Uint8ClampedArray): {
 }
 
 describe('Futhark WebGPU Correctness', () => {
-	// Skip all tests if running in non-browser environment
-	const isBrowser = typeof window !== 'undefined';
+	// Skip if no real WebGPU runtime (jsdom doesn't provide navigator.gpu)
+	const hasWebGPURuntime = typeof navigator !== 'undefined' && 'gpu' in navigator;
 
-	describe.skipIf(!isBrowser)('Pipeline Output Validation', () => {
+	describe.skipIf(!hasWebGPURuntime)('Pipeline Output Validation', () => {
 		let dispatcher: any;
 		let webgpuAvailable = false;
 		let futharkWebGPUAvailable = false;
