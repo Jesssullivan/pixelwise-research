@@ -29,7 +29,13 @@ jobs:
         run: echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Apply manifests
-        run: kubectl apply -f k8s/
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/ingress.yaml
+          # dns.yaml requires external-dns CRD; skip if not installed
+          kubectl apply -f k8s/dns.yaml 2>/dev/null || echo "Skipping dns.yaml (CRD not installed)"
 
       - name: Update image
         run: |

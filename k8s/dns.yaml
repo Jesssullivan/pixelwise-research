@@ -8,5 +8,5 @@ spec:
     - dnsName: pixelwise.tinyland.dev
       recordType: A
       targets:
-        - 159.203.154.10
+        - 212.2.244.217
       recordTTL: 300
