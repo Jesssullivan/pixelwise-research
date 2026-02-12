@@ -50,7 +50,7 @@ jobs:
         run: |
           sleep 10
           status=$(curl -sf -o /dev/null -w "%{http_code}" \
-            https://pixelwise.tinyland.dev/api/health || true)
+            https://pixelwise.ephemera.xoxd.ai/api/health || true)
           if [ "$status" = "200" ]; then
             echo "Health check passed"
           else
