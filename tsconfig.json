@@ -26,10 +26,20 @@
 		"noResolve": false,
 		// suppressImplicitAnyIndexErrors removed in TypeScript 7 - use noUncheckedIndexedAccess instead
 		"noLib": false
-	}
+	},
 	// Path aliases are handled by https://kit.svelte.dev/docs/configuration#alias
 	// except $lib which is handled by https://kit.svelte.dev/docs/configuration#files
 	//
-	// If you want to overwrite includes/excludes, make sure to copy over relevant includes/excludes
-	// from referenced tsconfig.json - TypeScript does not merge them in
+	// TypeScript does not merge includes/excludes from extended configs -
+	// copy relevant excludes from .svelte-kit/tsconfig.json when overriding
+	"exclude": [
+		"node_modules/**",
+		"src/service-worker.js",
+		"src/service-worker/**/*.js",
+		"src/service-worker.ts",
+		"src/service-worker/**/*.ts",
+		"src/service-worker.d.ts",
+		"src/service-worker/**/*.d.ts",
+		"tests/_archived/**"
+	]
 }
