@@ -22,6 +22,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate SvelteKit types
+        run: pnpm svelte-kit sync
+
       - name: Type check
         run: pnpm check
 
@@ -39,6 +42,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Generate SvelteKit types
+        run: pnpm svelte-kit sync
 
       - name: Run tests
         run: pnpm test -- --reporter=verbose
@@ -106,6 +112,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Generate SvelteKit types
+        run: pnpm svelte-kit sync
 
       - name: Start dev server
         run: pnpm run dev &
