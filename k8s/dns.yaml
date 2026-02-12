@@ -5,7 +5,7 @@ metadata:
   namespace: pixelwise
 spec:
   endpoints:
-    - dnsName: pixelwise.tinyland.dev
+    - dnsName: pixelwise.ephemera.xoxd.ai
       recordType: A
       targets:
         - 212.2.244.217

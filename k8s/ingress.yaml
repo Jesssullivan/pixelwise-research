@@ -10,10 +10,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - pixelwise.tinyland.dev
-      secretName: pixelwise-tls-secret
+        - pixelwise.ephemera.xoxd.ai
+      secretName: pixelwise-ephemera-tls
   rules:
-    - host: pixelwise.tinyland.dev
+    - host: pixelwise.ephemera.xoxd.ai
       http:
         paths:
           - path: /
