@@ -35,6 +35,8 @@ export interface ConsentData {
 	completedSteps: number[];
 	/** Detected compute backend at onboarding time */
 	detectedBackend: string;
+	/** Whether WebGPU was available at onboarding time */
+	webgpuAvailable: boolean;
 	/** Version of onboarding shown (for future migrations) */
 	version: number;
 }
@@ -48,6 +50,7 @@ const DEFAULT_CONSENT: ConsentData = {
 	paperViewed: false,
 	completedSteps: [],
 	detectedBackend: '',
+	webgpuAvailable: false,
 	version: 2
 };
 
@@ -165,11 +168,31 @@ export function getConsentAge(): number | null {
 	return Math.floor(ageMs / (1000 * 60 * 60 * 24));
 }
 
+/**
+ * Check if demos should be blocked (no WebGPU available)
+ * @returns true if WebGPU is not available and demos should be gated
+ */
+export function shouldBlockDemos(): boolean {
+	if (!browser) return false;
+	const consent = getConsent();
+	if (consent && !consent.webgpuAvailable) return true;
+	return false;
+}
+
+/**
+ * Update the stored WebGPU availability status
+ */
+export function updateWebGPUAvailability(available: boolean): void {
+	setConsent({ webgpuAvailable: available });
+}
+
 export default {
 	getConsent,
 	setConsent,
 	completeOnboarding,
 	shouldShowOnboarding,
+	shouldBlockDemos,
+	updateWebGPUAvailability,
 	resetConsent,
 	getConsentAge
 };

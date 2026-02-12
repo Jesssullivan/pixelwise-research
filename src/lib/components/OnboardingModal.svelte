@@ -3,7 +3,7 @@
 	import WebGPUInstructions from './WebGPUInstructions.svelte';
 	import PaperViewer from './PaperViewer.svelte';
 	import MobileWarning from './MobileWarning.svelte';
-	import { completeOnboarding, setConsent, getConsent } from '$lib/utils/consentStorage';
+	import { completeOnboarding, setConsent, getConsent, updateWebGPUAvailability } from '$lib/utils/consentStorage';
 	import { useWebGPUStatus } from '$lib/composables/useWebGPUStatus.svelte';
 
 	interface Props {
@@ -20,6 +20,16 @@
 	let screenCaptureTestResult = $state<'untested' | 'testing' | 'granted' | 'denied'>('untested');
 
 	const webgpu = useWebGPUStatus();
+
+	// Gate: non-dismissable when WebGPU is unavailable
+	const gated = $derived(!webgpu.isDetecting && !webgpu.available);
+
+	// Update stored WebGPU availability when detection completes
+	$effect(() => {
+		if (!webgpu.isDetecting) {
+			updateWebGPUAvailability(webgpu.available);
+		}
+	});
 
 	// Track completed steps
 	let completedSteps = $state<Set<number>>(new Set());
@@ -48,6 +58,7 @@
 	}
 
 	function handleFinish() {
+		if (gated) return;
 		markStepCompleted(currentStep);
 		if (dontShowAgain) {
 			completeOnboarding();
@@ -61,13 +72,14 @@
 	}
 
 	function handleBackdropClick(event: MouseEvent) {
+		if (gated) return;
 		if (event.target === event.currentTarget) {
 			handleFinish();
 		}
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape') {
+		if (event.key === 'Escape' && !gated) {
 			handleFinish();
 		} else if (event.key === 'ArrowRight' || (event.key === 'Enter' && currentStep < TOTAL_STEPS)) {
 			nextStep();
@@ -128,16 +140,18 @@
 						Step {currentStep} of {TOTAL_STEPS}
 					</p>
 				</div>
-				<button
-					type="button"
-					class="rounded-lg p-2 text-surface-500-400 transition-colors hover:bg-surface-100-800"
-					onclick={handleFinish}
-					aria-label="Close"
-				>
-					<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
+				{#if !gated}
+					<button
+						type="button"
+						class="rounded-lg p-2 text-surface-500-400 transition-colors hover:bg-surface-100-800"
+						onclick={handleFinish}
+						aria-label="Close"
+					>
+						<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				{/if}
 			</div>
 
 			<!-- Progress Indicator -->
@@ -227,9 +241,9 @@
 							</div>
 						{/if}
 
-						{#if !webgpu.available && !webgpu.isDetecting}
-							<div class="rounded-lg bg-surface-100-800 p-3 text-sm text-surface-600-300">
-								You can continue without WebGPU - the demo will use CPU-based processing (Futhark WASM).
+						{#if gated}
+							<div class="rounded-lg border border-error-500/30 bg-error-500/10 p-3 text-sm text-error-700 dark:text-error-400">
+								WebGPU is required to use the Pixelwise demos. Please follow the instructions above to enable WebGPU in your browser, then click "Re-check".
 							</div>
 						{/if}
 					</div>
@@ -331,47 +345,61 @@
 				{:else if currentStep === 5}
 					<!-- Step 5: Ready -->
 					<div class="space-y-4">
-						<div class="rounded-lg border border-success-500/30 bg-success-500/10 p-4">
-							<h4 class="mb-3 flex items-center gap-2 font-semibold text-success-700 dark:text-success-400">
-								<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-								</svg>
-								Setup Complete
-							</h4>
-							<div class="space-y-2 text-sm text-surface-700-200">
-								<div class="flex items-center justify-between">
-									<span>Backend:</span>
-									<span class="font-mono text-surface-900-50">{performanceTier}</span>
-								</div>
-								<div class="flex items-center justify-between">
-									<span>WebGPU:</span>
-									<span class="font-mono {webgpu.available ? 'text-success-500' : 'text-warning-500'}">
-										{webgpu.available ? 'Available' : 'Using fallback'}
-									</span>
-								</div>
-								{#if webgpu.adapter}
+						{#if gated}
+							<div class="rounded-lg border border-error-500/30 bg-error-500/10 p-4">
+								<h4 class="mb-3 flex items-center gap-2 font-semibold text-error-700 dark:text-error-400">
+									<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+									</svg>
+									WebGPU Required
+								</h4>
+								<p class="text-sm text-surface-700-200">
+									The Pixelwise demos require a WebGPU-capable browser. Please go back to Step 2 for browser-specific instructions on enabling WebGPU, then click "Re-check".
+								</p>
+							</div>
+						{:else}
+							<div class="rounded-lg border border-success-500/30 bg-success-500/10 p-4">
+								<h4 class="mb-3 flex items-center gap-2 font-semibold text-success-700 dark:text-success-400">
+									<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+									</svg>
+									Setup Complete
+								</h4>
+								<div class="space-y-2 text-sm text-surface-700-200">
 									<div class="flex items-center justify-between">
-										<span>GPU:</span>
-										<span class="font-mono text-surface-900-50 text-xs">{webgpu.adapter}</span>
+										<span>Backend:</span>
+										<span class="font-mono text-surface-900-50">{performanceTier}</span>
 									</div>
-								{/if}
-								<div class="flex items-center justify-between">
-									<span>Screen Capture:</span>
-									<span class="font-mono {screenCaptureTestResult === 'granted' ? 'text-success-500' : 'text-surface-500-400'}">
-										{screenCaptureTestResult === 'granted' ? 'Granted' : 'Will prompt on start'}
-									</span>
+									<div class="flex items-center justify-between">
+										<span>WebGPU:</span>
+										<span class="font-mono {webgpu.available ? 'text-success-500' : 'text-warning-500'}">
+											{webgpu.available ? 'Available' : 'Using fallback'}
+										</span>
+									</div>
+									{#if webgpu.adapter}
+										<div class="flex items-center justify-between">
+											<span>GPU:</span>
+											<span class="font-mono text-surface-900-50 text-xs">{webgpu.adapter}</span>
+										</div>
+									{/if}
+									<div class="flex items-center justify-between">
+										<span>Screen Capture:</span>
+										<span class="font-mono {screenCaptureTestResult === 'granted' ? 'text-success-500' : 'text-surface-500-400'}">
+											{screenCaptureTestResult === 'granted' ? 'Granted' : 'Will prompt on start'}
+										</span>
+									</div>
 								</div>
 							</div>
-						</div>
 
-						<label class="flex items-center gap-2 text-sm text-surface-600-300">
-							<input
-								type="checkbox"
-								bind:checked={dontShowAgain}
-								class="h-4 w-4 rounded border-surface-400-500 text-primary-500 focus:ring-primary-500"
-							/>
-							Don't show this wizard again
-						</label>
+							<label class="flex items-center gap-2 text-sm text-surface-600-300">
+								<input
+									type="checkbox"
+									bind:checked={dontShowAgain}
+									class="h-4 w-4 rounded border-surface-400-500 text-primary-500 focus:ring-primary-500"
+								/>
+								Don't show this wizard again
+							</label>
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -417,6 +445,14 @@
 							<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 							</svg>
+						</button>
+					{:else if gated}
+						<button
+							type="button"
+							class="rounded-lg bg-surface-300-600 px-6 py-2 text-sm font-medium text-surface-500-400 cursor-not-allowed"
+							disabled
+						>
+							WebGPU Required
 						</button>
 					{:else}
 						<button

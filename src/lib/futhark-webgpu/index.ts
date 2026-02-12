@@ -190,6 +190,15 @@ export async function newFutharkWebGPUContext(): Promise<FutharkWebGPUContext> {
 		} catch (err: unknown) {
 			contextPromise = null; // Reset on failure to allow retry
 			const message = err instanceof Error ? err.message : String(err);
+
+			if (message.includes('assert') || message.includes('Assertion') || message.includes('abort')) {
+				throw new Error(
+					`Futhark WebGPU context creation failed (GPU assertion). ` +
+						`This usually means WebGPU is not fully supported by your browser/GPU driver. ` +
+						`Original error: ${message}`
+				);
+			}
+
 			throw new Error(
 				`Failed to initialize Futhark WebGPU context. ` +
 					`Ensure 'just futhark-webgpu-compile' has been run. ` +
