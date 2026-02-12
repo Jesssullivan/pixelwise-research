@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pixelwise-ingress
+  namespace: pixelwise
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - pixelwise.tinyland.dev
+      secretName: pixelwise-tls-secret
+  rules:
+    - host: pixelwise.tinyland.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pixelwise
+                port:
+                  number: 3000

@@ -1,0 +1,53 @@
+name: Deploy to Civo
+
+on:
+  workflow_run:
+    workflows: ['Build Container Image']
+    types: [completed]
+    branches: [master]
+
+jobs:
+  deploy:
+    name: Deploy to Civo
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.CIVO_KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Get triggering commit SHA
+        id: sha
+        run: echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Apply manifests
+        run: kubectl apply -f k8s/
+
+      - name: Update image
+        run: |
+          kubectl set image deployment/pixelwise \
+            pixelwise=ghcr.io/jesssullivan/pixelwise:${{ steps.sha.outputs.sha }} \
+            -n pixelwise
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/pixelwise -n pixelwise --timeout=5m
+
+      - name: Smoke test
+        run: |
+          sleep 10
+          status=$(curl -sf -o /dev/null -w "%{http_code}" \
+            https://pixelwise.tinyland.dev/api/health || true)
+          if [ "$status" = "200" ]; then
+            echo "Health check passed"
+          else
+            echo "Health check failed (HTTP $status)"
+            exit 1
+          fi

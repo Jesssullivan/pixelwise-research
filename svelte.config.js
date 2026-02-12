@@ -1,4 +1,4 @@
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-node';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { mdsvex } from 'mdsvex';
 import mdsvexConfig from './mdsvex.config.js';
@@ -15,7 +15,7 @@ const config = {
 	extensions: ['.svelte', '.svelte.md', '.md', '.svx', '.mdx'],
 
 	kit: {
-		adapter: adapter()
+		adapter: adapter({ out: 'dist' })
 	},
 
 	// Svelte 5 runes configuration

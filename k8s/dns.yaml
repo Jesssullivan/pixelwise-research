@@ -1,0 +1,12 @@
+apiVersion: externaldns.k8s.io/v1alpha1
+kind: DNSEndpoint
+metadata:
+  name: pixelwise-dns
+  namespace: pixelwise
+spec:
+  endpoints:
+    - dnsName: pixelwise.tinyland.dev
+      recordType: A
+      targets:
+        - 159.203.154.10
+      recordTTL: 300
