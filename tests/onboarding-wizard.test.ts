@@ -176,6 +176,32 @@ describe('Onboarding Wizard', () => {
 		});
 	});
 
+	describe('webgpuAvailable field', () => {
+		it('should default to false in new consent', async () => {
+			const { setConsent, getConsent } = await import('$lib/utils/consentStorage');
+
+			setConsent({ acknowledged: false });
+			const consent = getConsent();
+			expect(consent!.webgpuAvailable).toBe(false);
+		});
+
+		it('should be settable via updateWebGPUAvailability', async () => {
+			const { updateWebGPUAvailability, getConsent } = await import('$lib/utils/consentStorage');
+
+			updateWebGPUAvailability(true);
+			expect(getConsent()!.webgpuAvailable).toBe(true);
+		});
+
+		it('should be preserved across setConsent calls', async () => {
+			const { setConsent, updateWebGPUAvailability, getConsent } = await import('$lib/utils/consentStorage');
+
+			updateWebGPUAvailability(true);
+			setConsent({ acknowledged: true });
+
+			expect(getConsent()!.webgpuAvailable).toBe(true);
+		});
+	});
+
 	describe('getConsentAge', () => {
 		it('should return null when no consent', async () => {
 			const { getConsentAge } = await import('$lib/utils/consentStorage');

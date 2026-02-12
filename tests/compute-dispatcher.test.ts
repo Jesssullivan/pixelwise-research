@@ -1134,6 +1134,112 @@ describe('ComputeDispatcher', () => {
 	// -----------------------------------------------------------------------
 	// ESDT JS fallback algorithm correctness
 	// -----------------------------------------------------------------------
+	// -----------------------------------------------------------------------
+	// OOM and assertion failure handling
+	// -----------------------------------------------------------------------
+	describe('WASM OOM handling', () => {
+		it('should null futhark context on OOM and fall back to JS', async () => {
+			vi.mocked(detectWebGPU).mockResolvedValue({ available: false, adapter: null });
+
+			// Create a mock context that throws OOM on compute
+			const mockFree = vi.fn();
+			const oomCtx = {
+				new_f32_2d: vi.fn().mockImplementation(() => ({
+					free: mockFree
+				})),
+				compute_esdt_2d: vi.fn().mockImplementation(() => {
+					throw new Error('Aborted(OOM)');
+				})
+			};
+
+			const { newFutharkContext } = await import('$lib/futhark');
+			vi.mocked(newFutharkContext).mockResolvedValue(oomCtx);
+
+			const dispatcher = createComputeDispatcher();
+			await dispatcher.initialize();
+
+			expect(dispatcher.hasFuthark).toBe(true);
+
+			// computeEsdt should throw on OOM
+			const levels = new Float32Array(16);
+			await expect(dispatcher.computeEsdt(levels, 4, 4)).rejects.toThrow('Aborted(OOM)');
+
+			// After OOM, context should be nulled
+			expect(dispatcher.hasFuthark).toBe(false);
+		});
+
+		it('should fall through to JS fallback in runFullPipeline after WASM OOM', async () => {
+			vi.mocked(detectWebGPU).mockResolvedValue({ available: false, adapter: null });
+
+			// Create a mock context that throws OOM during pipeline
+			const mockFree = vi.fn();
+			const oomCtx = {
+				new_f32_2d: vi.fn().mockImplementation(() => ({
+					free: mockFree
+				})),
+				compute_esdt_2d: vi.fn().mockImplementation(() => {
+					throw new Error('Aborted(OOM)');
+				})
+			};
+
+			const { newFutharkContext } = await import('$lib/futhark');
+			vi.mocked(newFutharkContext).mockResolvedValue(oomCtx);
+
+			const dispatcher = createComputeDispatcher();
+			await dispatcher.initialize();
+
+			// runFullPipeline should catch the OOM and return JS fallback result
+			const result = await dispatcher.runFullPipeline(
+				createSyntheticRgba(4, 4),
+				4,
+				4
+			);
+
+			expect(result.backend).toBe('js-fallback');
+		});
+	});
+
+	describe('WebGPU assertion failure handling', () => {
+		it('should fall back to WASM when WebGPU context creation fails with assertion', async () => {
+			vi.mocked(detectWebGPU).mockResolvedValue({ available: true, adapter: 'Mock Adapter' });
+
+			// WebGPU fails with assertion error
+			vi.mocked(newFutharkWebGPUContext).mockRejectedValue(
+				new Error('Futhark WebGPU context creation failed (GPU assertion). Original error: assert failed in $futhark_context_new')
+			);
+
+			const originalNavigator = globalThis.navigator;
+			Object.defineProperty(globalThis, 'navigator', {
+				value: {
+					...originalNavigator,
+					gpu: {
+						requestAdapter: vi.fn().mockResolvedValue(null)
+					}
+				},
+				writable: true,
+				configurable: true
+			});
+
+			const mockWasmCtx = createMockFutharkWasmContext();
+			const { newFutharkContext } = await import('$lib/futhark');
+			vi.mocked(newFutharkContext).mockResolvedValue(mockWasmCtx);
+
+			const dispatcher = createComputeDispatcher();
+			await dispatcher.initialize();
+
+			// Should have fallen back to WASM
+			expect(dispatcher.hasFutharkWebGPU).toBe(false);
+			expect(dispatcher.hasFuthark).toBe(true);
+			expect(dispatcher.activeBackend).toBe('futhark-wasm');
+
+			Object.defineProperty(globalThis, 'navigator', {
+				value: originalNavigator,
+				writable: true,
+				configurable: true
+			});
+		});
+	});
+
 	describe('ESDT JS fallback correctness', () => {
 		/**
 		 * Verify the JS fallback produces valid distance fields.

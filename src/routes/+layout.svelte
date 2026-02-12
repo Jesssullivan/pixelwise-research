@@ -8,7 +8,7 @@
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import OnboardingModal from '$lib/components/OnboardingModal.svelte';
-	import { shouldShowOnboarding } from '$lib/utils/consentStorage';
+	import { shouldShowOnboarding, shouldBlockDemos } from '$lib/utils/consentStorage';
 
 	interface Props {
 		children: Snippet;
@@ -69,6 +69,15 @@
 
 		// Check if onboarding should be shown
 		showOnboarding = shouldShowOnboarding();
+	});
+
+	// Re-gate on demo route navigation when WebGPU is unavailable
+	$effect(() => {
+		if (browser && initialized && $page.url.pathname.startsWith('/demo')) {
+			if (shouldBlockDemos()) {
+				showOnboarding = true;
+			}
+		}
 	});
 
 	// Reactive effect: Apply dark mode to document.documentElement when isDark changes

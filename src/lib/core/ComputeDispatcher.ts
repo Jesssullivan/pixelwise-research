@@ -354,15 +354,24 @@ export function createComputeDispatcher() {
 			throw new Error('Futhark context not initialized');
 		}
 
-		const input2d = futharkContext.new_f32_2d(levels, width, height);
-
 		try {
-			const result = futharkContext.compute_esdt_2d(input2d, useRelaxation);
-			const data = await result.toTypedArray();
-			result.free();
-			return { data, width, height };
-		} finally {
-			input2d.free();
+			const input2d = futharkContext.new_f32_2d(levels, width, height);
+
+			try {
+				const result = futharkContext.compute_esdt_2d(input2d, useRelaxation);
+				const data = await result.toTypedArray();
+				result.free();
+				return { data, width, height };
+			} finally {
+				input2d.free();
+			}
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
+			if (msg.includes('OOM') || msg.includes('out of memory') || msg.includes('Aborted')) {
+				console.error('[ComputeDispatcher] WASM OOM — nulling futhark context');
+				futharkContext = null;
+			}
+			throw err;
 		}
 	}
 
@@ -730,6 +739,11 @@ export function createComputeDispatcher() {
 		try {
 			return await runFullPipelineCPU(rgbaData, width, height, fullConfig);
 		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
+			if (msg.includes('OOM') || msg.includes('Aborted')) {
+				console.error('[ComputeDispatcher] WASM OOM in CPU pipeline, context destroyed');
+				futharkContext = null;
+			}
 			console.error('[ComputeDispatcher] CPU pipeline failed:', err);
 			// Last resort: return original data unmodified
 			recordMetrics({
