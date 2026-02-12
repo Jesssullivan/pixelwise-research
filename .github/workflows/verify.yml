@@ -1,4 +1,4 @@
-name: Research Verification
+name: Verify
 
 on:
   push:
@@ -7,36 +7,68 @@ on:
     branches: [main, master]
 
 jobs:
-  verify:
-    name: Verify Algorithm Implementation
+  typecheck:
+    name: Type Check
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: cachix/install-nix-action@v27
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm check
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test -- --reporter=verbose
+
+  futhark-tests:
+    name: Futhark Algorithm Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
         with:
           nix_path: nixpkgs=channel:nixos-unstable
           extra_nix_config: |
             experimental-features = nix-command flakes
             accept-flake-config = true
 
-      - name: Cache Nix store
-        uses: cachix/cachix-action@v14
+      - uses: cachix/cachix-action@v14
         with:
           name: devenv
           skipPush: true
 
-      - name: Install dependencies
-        run: nix develop --command pnpm install --frozen-lockfile
-
       - name: Run Futhark tests
         run: nix develop --command futhark test futhark/*.fut
 
-      - name: Run TypeScript tests
-        run: nix develop --command pnpm test -- --reporter=verbose
+  theorem-verification:
+    name: Theorem Verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Verify no mocking in theorem tests
         run: |
@@ -60,143 +92,17 @@ jobs:
           fi
           echo "Theorem reference check complete"
 
-  futhark-wasm:
-    name: Build Futhark WASM
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v27
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-
-      - name: Build ESDT WASM
-        run: nix develop --command bash -c "cd futhark && make esdt"
-
-      - name: Build Pipeline WASM
-        run: nix develop --command bash -c "cd futhark && make pipeline"
-
-      - name: Verify WASM artifacts
-        run: |
-          test -f futhark/esdt.wasm || (echo "esdt.wasm not found" && exit 1)
-          test -f futhark/pipeline.wasm || (echo "pipeline.wasm not found" && exit 1)
-          echo "WASM artifacts verified"
-
-      - name: Upload WASM artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: futhark-wasm
-          path: |
-            futhark/*.wasm
-            futhark/*.class.js
-          retention-days: 7
-
-  futhark-webgpu:
-    name: Build Futhark WebGPU
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v27
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-            accept-flake-config = true
-
-      - name: Cache Nix store
-        uses: cachix/cachix-action@v14
-        with:
-          name: devenv
-          skipPush: true
-
-      - name: Build Futhark with WebGPU backend
-        run: |
-          nix develop .#futhark-webgpu --command bash -c '
-            echo "Building Futhark from source: $FUTHARK_SRC"
-            cd "$FUTHARK_SRC"
-            cabal update
-            cabal build
-            mkdir -p "$HOME/.local/futhark-webgpu/bin"
-            cabal install --installdir="$HOME/.local/futhark-webgpu/bin" --overwrite-policy=always
-            echo "Futhark WebGPU installed:"
-            "$HOME/.local/futhark-webgpu/bin/futhark" --version
-          '
-
-      - name: Compile pipeline to WebGPU
-        run: |
-          nix develop .#futhark-webgpu --command bash -c '
-            export PATH="$HOME/.local/futhark-webgpu/bin:$PATH"
-            cd futhark
-            futhark webgpu --library pipeline.fut -o pipeline-webgpu
-            echo "Generated WebGPU artifacts:"
-            ls -la pipeline-webgpu.*
-          '
-
-      - name: Verify WebGPU artifacts
-        run: |
-          test -f futhark/pipeline-webgpu.js || (echo "pipeline-webgpu.js not found" && exit 1)
-          test -f futhark/pipeline-webgpu.wasm || (echo "pipeline-webgpu.wasm not found" && exit 1)
-          test -f futhark/pipeline-webgpu.json || (echo "pipeline-webgpu.json not found" && exit 1)
-          test -f futhark/pipeline-webgpu.wrapper.js || (echo "pipeline-webgpu.wrapper.js not found" && exit 1)
-          echo "WebGPU artifacts verified"
-
-      - name: Upload WebGPU artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: futhark-webgpu
-          path: |
-            futhark/pipeline-webgpu.js
-            futhark/pipeline-webgpu.wasm
-            futhark/pipeline-webgpu.json
-            futhark/pipeline-webgpu.wrapper.js
-          retention-days: 7
-
-  typecheck:
-    name: TypeScript Type Check
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v27
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-
-      - name: Install dependencies
-        run: nix develop --command pnpm install --frozen-lockfile
-
-      - name: Type check
-        run: nix develop --command pnpm check
-
   e2e-smoke:
     name: E2E Smoke Test
     runs-on: ubuntu-latest
-    needs: verify
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -242,3 +148,21 @@ jobs:
       - name: Stop dev server
         if: always()
         run: kill $(lsof -ti:5175) 2>/dev/null || true
+
+  build:
+    name: Production Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build

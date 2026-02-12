@@ -1,0 +1,86 @@
+# Docker build context ignore (mirrors .containerignore)
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+docs/
+tex_research/
+
+# IDE and Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+.pnpm-store/
+.npm/
+
+# Build outputs
+.svelte-kit/
+build/
+dist/
+.output/
+
+# Tests
+tests/
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+playwright.*.config.ts
+vitest.config.ts
+coverage/
+
+# Futhark build intermediates (keep .wasm, .mjs, .class.js)
+futhark/*.c
+futhark/*.h
+
+# Container files
+Dockerfile
+.dockerignore
+.containerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Env files
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Nix / Bazel (not needed in container)
+flake.nix
+flake.lock
+nix/
+.bazelrc
+.bazelignore
+BUILD.bazel
+MODULE.bazel
+platforms/
+
+# Claude
+.claude/
+CLAUDE.md
