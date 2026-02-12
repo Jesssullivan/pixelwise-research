@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Pixelwise favicon - stylized pixel grid representing WebGPU/WASM processing -->
+  <rect width="32" height="32" rx="4" fill="#1a1a2e"/>
+  <!-- Pixel grid pattern -->
+  <rect x="4" y="4" width="6" height="6" rx="1" fill="#4ade80"/>
+  <rect x="13" y="4" width="6" height="6" rx="1" fill="#22d3ee"/>
+  <rect x="22" y="4" width="6" height="6" rx="1" fill="#a78bfa"/>
+  <rect x="4" y="13" width="6" height="6" rx="1" fill="#f472b6"/>
+  <rect x="13" y="13" width="6" height="6" rx="1" fill="#fbbf24"/>
+  <rect x="22" y="13" width="6" height="6" rx="1" fill="#4ade80"/>
+  <rect x="4" y="22" width="6" height="6" rx="1" fill="#22d3ee"/>
+  <rect x="13" y="22" width="6" height="6" rx="1" fill="#a78bfa"/>
+  <rect x="22" y="22" width="6" height="6" rx="1" fill="#f472b6"/>
+</svg>
