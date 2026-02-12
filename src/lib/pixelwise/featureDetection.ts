@@ -119,23 +119,49 @@ export async function detectWebGPU(): Promise<{ available: boolean; adapter: str
 			}
 		}
 
-		// Get adapter info for debugging (with compatibility check for older WebGPU implementations)
+		// Get adapter info for debugging
 		let adapterInfo = 'Unknown Adapter';
 		let info: GPUAdapterInfo | null = null;
 
-		// Type-safe check for newer WebGPU API methods
-		// GPUAdapter may have requestAdapterInfo in newer specs (v1.1+)
-		// and isFallbackAdapter as a property
 		interface ExtendedGPUAdapter extends GPUAdapter {
 			requestAdapterInfo?: () => Promise<GPUAdapterInfo>;
 			isFallbackAdapter?: boolean;
+			info?: GPUAdapterInfo;
 		}
 		const extendedAdapter = adapter as ExtendedGPUAdapter;
 
-		if (typeof extendedAdapter.requestAdapterInfo === 'function') {
+		// Reject fallback/software adapters — Futhark requires a real GPU
+		if (extendedAdapter.isFallbackAdapter) {
+			console.warn('[featureDetection] WebGPU: Rejecting fallback (software) adapter');
+			return { available: false, adapter: 'Software Adapter (not supported)' };
+		}
+
+		// Try adapter.info (synchronous, Chrome 121+), then requestAdapterInfo() (async, older)
+		if (extendedAdapter.info) {
+			info = extendedAdapter.info;
+			adapterInfo = info.vendor || info.architecture || info.device
+				? `${info.vendor} ${info.architecture} (${info.device})`.trim()
+				: 'WebGPU Adapter';
+
+			console.log('[featureDetection] WebGPU Adapter Details:', {
+				vendor: info.vendor,
+				architecture: info.architecture,
+				device: info.device,
+				description: info.description,
+				features: Array.from(adapter.features),
+				isFallbackAdapter: extendedAdapter.isFallbackAdapter ?? false,
+				limits: {
+					maxTextureDimension2D: adapter.limits.maxTextureDimension2D,
+					maxBufferSize: adapter.limits.maxBufferSize,
+					maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize
+				}
+			});
+		} else if (typeof extendedAdapter.requestAdapterInfo === 'function') {
 			try {
 				info = await extendedAdapter.requestAdapterInfo();
-				adapterInfo = `${info.vendor} ${info.architecture} (${info.device})`;
+				adapterInfo = info.vendor || info.architecture || info.device
+					? `${info.vendor} ${info.architecture} (${info.device})`.trim()
+					: 'WebGPU Adapter';
 
 				console.log('[featureDetection] WebGPU Adapter Details:', {
 					vendor: info.vendor,
@@ -152,23 +178,26 @@ export async function detectWebGPU(): Promise<{ available: boolean; adapter: str
 				});
 			} catch (error: unknown) {
 				console.warn('[featureDetection] requestAdapterInfo() failed:', error);
-				adapterInfo = 'WebGPU Adapter (info unavailable)';
+				adapterInfo = 'WebGPU Adapter';
 			}
 		} else {
-			// Fallback for older WebGPU implementations (pre-v1.1)
-			console.warn('[featureDetection] requestAdapterInfo() not available (WebGPU < v1.1)');
-			adapterInfo = 'WebGPU Adapter (legacy)';
+			// Neither info property nor requestAdapterInfo available
+			console.warn('[featureDetection] No adapter info API available');
+			adapterInfo = 'WebGPU Adapter';
 
-			// Log basic adapter info without requestAdapterInfo()
 			console.log('[featureDetection] WebGPU Adapter Details (basic):', {
 				features: Array.from(adapter.features),
-				isFallbackAdapter: extendedAdapter.isFallbackAdapter ?? false,
 				limits: {
 					maxTextureDimension2D: adapter.limits.maxTextureDimension2D,
 					maxBufferSize: adapter.limits.maxBufferSize,
 					maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize
 				}
 			});
+		}
+
+		// Reject adapters with empty vendor/device info — likely experimental or incomplete
+		if (info && !info.vendor && !info.architecture && !info.device) {
+			console.warn('[featureDetection] WebGPU: Adapter has no vendor/device info, likely experimental');
 		}
 
 		// Check for required features
