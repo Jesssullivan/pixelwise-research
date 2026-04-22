@@ -21,18 +21,19 @@
     "node": ">=20.0.0",
     "pnpm": ">=8.0.0"
   },
-  "scripts": {
-    "dev": "vite dev --host 0.0.0.0 --port ${PORT:-5175}",
-    "dev:container": "vite dev --host 0.0.0.0 --port ${PORT:-5175}",
-    "build": "vite build",
-    "preview": "vite preview",
-    "build:futhark": "make -C futhark",
-    "build:futhark:clean": "make -C futhark clean && make -C futhark",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:pixelwise": "vitest run tests/pixelwise/",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
-  },
+	"scripts": {
+		"dev": "vite dev --host 0.0.0.0 --port ${PORT:-5175}",
+		"dev:container": "vite dev --host 0.0.0.0 --port ${PORT:-5175}",
+		"build": "vite build",
+		"preview": "vite preview",
+		"build:futhark": "make -C futhark",
+		"build:futhark:clean": "make -C futhark clean && make -C futhark",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:pixelwise": "vitest run tests/pixelwise/",
+		"test:webgpu:canary": "playwright test -c playwright.webgpu.config.ts",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+	},
   "devDependencies": {
     "@playwright/test": "^1.54.1",
     "@sveltejs/adapter-node": "^5.5.2",
