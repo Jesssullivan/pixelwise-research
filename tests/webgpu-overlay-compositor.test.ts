@@ -93,10 +93,12 @@ function createMockGPUDevice() {
 
 let originalNavigator: any;
 let mockDevice: ReturnType<typeof createMockGPUDevice>['device'];
+let sharedMockDevice: GPUDevice;
 
 beforeEach(() => {
 	const { device } = createMockGPUDevice();
 	mockDevice = device;
+	sharedMockDevice = mockDevice as unknown as GPUDevice;
 
 	// Mock navigator.gpu
 	originalNavigator = globalThis.navigator;
@@ -193,7 +195,7 @@ describe('createWebGPUOverlayCompositor', () => {
 			const { createWebGPUOverlayCompositor } = await getModule();
 			const compositor = createWebGPUOverlayCompositor();
 
-			const result = await compositor.initialize({}, mockDevice);
+			const result = await compositor.initialize({}, sharedMockDevice);
 			expect(result).toBe(true);
 			// Should NOT call requestAdapter when device is provided
 			expect(navigator.gpu.requestAdapter).not.toHaveBeenCalled();
@@ -232,7 +234,7 @@ describe('createWebGPUOverlayCompositor', () => {
 				parentNode: null
 			} as any);
 
-			const result = await compositor.initialize({}, mockDevice);
+			const result = await compositor.initialize({}, sharedMockDevice);
 			expect(result).toBe(false);
 		});
 	});
@@ -241,7 +243,7 @@ describe('createWebGPUOverlayCompositor', () => {
 		it('updateTexture accepts Uint8ClampedArray', async () => {
 			const { createWebGPUOverlayCompositor } = await getModule();
 			const compositor = createWebGPUOverlayCompositor();
-			await compositor.initialize({}, mockDevice);
+			await compositor.initialize({}, sharedMockDevice);
 
 			const pixels = new Uint8ClampedArray(16); // 2x2 RGBA
 			compositor.updateTexture(pixels, 2, 2);
@@ -252,7 +254,7 @@ describe('createWebGPUOverlayCompositor', () => {
 		it('updateTextureFromBuffer accepts Uint8Array', async () => {
 			const { createWebGPUOverlayCompositor } = await getModule();
 			const compositor = createWebGPUOverlayCompositor();
-			await compositor.initialize({}, mockDevice);
+			await compositor.initialize({}, sharedMockDevice);
 
 			const data = new Uint8Array(16); // 2x2 RGBA
 			compositor.updateTextureFromBuffer(data, 2, 2);
@@ -263,7 +265,7 @@ describe('createWebGPUOverlayCompositor', () => {
 		it('recreates texture when dimensions change', async () => {
 			const { createWebGPUOverlayCompositor } = await getModule();
 			const compositor = createWebGPUOverlayCompositor();
-			await compositor.initialize({}, mockDevice);
+			await compositor.initialize({}, sharedMockDevice);
 
 			const createTextureSpy = mockDevice.createTexture;
 
@@ -285,7 +287,7 @@ describe('createWebGPUOverlayCompositor', () => {
 		it('render submits a command buffer with draw(3)', async () => {
 			const { createWebGPUOverlayCompositor } = await getModule();
 			const compositor = createWebGPUOverlayCompositor();
-			await compositor.initialize({}, mockDevice);
+			await compositor.initialize({}, sharedMockDevice);
 
 			compositor.render();
 
@@ -298,7 +300,7 @@ describe('createWebGPUOverlayCompositor', () => {
 		it('show/hide toggle isVisible and canvas display', async () => {
 			const { createWebGPUOverlayCompositor } = await getModule();
 			const compositor = createWebGPUOverlayCompositor();
-			await compositor.initialize({}, mockDevice);
+			await compositor.initialize({}, sharedMockDevice);
 
 			expect(compositor.isVisible).toBe(false);
 
@@ -316,7 +318,7 @@ describe('createWebGPUOverlayCompositor', () => {
 		it('destroy removes canvas from DOM', async () => {
 			const { createWebGPUOverlayCompositor } = await getModule();
 			const compositor = createWebGPUOverlayCompositor();
-			await compositor.initialize({}, mockDevice);
+			await compositor.initialize({}, sharedMockDevice);
 
 			compositor.destroy();
 			expect(compositor.canvas).toBeNull();
@@ -325,7 +327,7 @@ describe('createWebGPUOverlayCompositor', () => {
 		it('operations are safe after destroy', async () => {
 			const { createWebGPUOverlayCompositor } = await getModule();
 			const compositor = createWebGPUOverlayCompositor();
-			await compositor.initialize({}, mockDevice);
+			await compositor.initialize({}, sharedMockDevice);
 
 			compositor.destroy();
 

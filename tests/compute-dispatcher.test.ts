@@ -159,6 +159,10 @@ function createMockFutharkWasmContext() {
 	};
 }
 
+function asMockFutharkContext<T>(ctx: T) {
+	return ctx as Awaited<ReturnType<typeof import('$lib/futhark').newFutharkContext>>;
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -251,7 +255,7 @@ describe('ComputeDispatcher', () => {
 
 			const mockCtx = createMockFutharkWasmContext();
 			const { newFutharkContext } = await import('$lib/futhark');
-			vi.mocked(newFutharkContext).mockResolvedValue(mockCtx);
+			vi.mocked(newFutharkContext).mockResolvedValue(asMockFutharkContext(mockCtx));
 
 			const dispatcher = createComputeDispatcher();
 			const result = await dispatcher.initialize('auto');
@@ -279,7 +283,7 @@ describe('ComputeDispatcher', () => {
 		it('should honor explicit futhark-wasm preference', async () => {
 			const mockCtx = createMockFutharkWasmContext();
 			const { newFutharkContext } = await import('$lib/futhark');
-			vi.mocked(newFutharkContext).mockResolvedValue(mockCtx);
+			vi.mocked(newFutharkContext).mockResolvedValue(asMockFutharkContext(mockCtx));
 
 			const dispatcher = createComputeDispatcher();
 			const result = await dispatcher.initialize('futhark-wasm');
@@ -310,7 +314,7 @@ describe('ComputeDispatcher', () => {
 
 			const mockWasmCtx = createMockFutharkWasmContext();
 			const { newFutharkContext } = await import('$lib/futhark');
-			vi.mocked(newFutharkContext).mockResolvedValue(mockWasmCtx);
+			vi.mocked(newFutharkContext).mockResolvedValue(asMockFutharkContext(mockWasmCtx));
 
 			const dispatcher = createComputeDispatcher();
 			const result = await dispatcher.initialize('futhark-webgpu');
@@ -412,7 +416,7 @@ describe('ComputeDispatcher', () => {
 
 			const mockCtx = createMockFutharkWasmContext();
 			const { newFutharkContext } = await import('$lib/futhark');
-			vi.mocked(newFutharkContext).mockResolvedValue(mockCtx);
+			vi.mocked(newFutharkContext).mockResolvedValue(asMockFutharkContext(mockCtx));
 
 			const dispatcher = createComputeDispatcher();
 			await dispatcher.initialize();
@@ -479,7 +483,7 @@ describe('ComputeDispatcher', () => {
 
 			const mockCtx = createMockFutharkWasmContext();
 			const { newFutharkContext } = await import('$lib/futhark');
-			vi.mocked(newFutharkContext).mockResolvedValue(mockCtx);
+			vi.mocked(newFutharkContext).mockResolvedValue(asMockFutharkContext(mockCtx));
 
 			const dispatcher = createComputeDispatcher();
 			await dispatcher.initialize();
@@ -915,7 +919,7 @@ describe('ComputeDispatcher', () => {
 
 			const mockCtx = createMockFutharkWasmContext();
 			const { newFutharkContext } = await import('$lib/futhark');
-			vi.mocked(newFutharkContext).mockResolvedValue(mockCtx);
+			vi.mocked(newFutharkContext).mockResolvedValue(asMockFutharkContext(mockCtx));
 
 			const dispatcher = createComputeDispatcher();
 			await dispatcher.initialize();
@@ -934,7 +938,7 @@ describe('ComputeDispatcher', () => {
 
 			const mockCtx = createMockFutharkWasmContext();
 			const { newFutharkContext } = await import('$lib/futhark');
-			vi.mocked(newFutharkContext).mockResolvedValue(mockCtx);
+			vi.mocked(newFutharkContext).mockResolvedValue(asMockFutharkContext(mockCtx));
 
 			const dispatcher = createComputeDispatcher();
 			await dispatcher.initialize();
@@ -1153,7 +1157,7 @@ describe('ComputeDispatcher', () => {
 			};
 
 			const { newFutharkContext } = await import('$lib/futhark');
-			vi.mocked(newFutharkContext).mockResolvedValue(oomCtx);
+			vi.mocked(newFutharkContext).mockResolvedValue(asMockFutharkContext(oomCtx));
 
 			const dispatcher = createComputeDispatcher();
 			await dispatcher.initialize();
@@ -1183,7 +1187,7 @@ describe('ComputeDispatcher', () => {
 			};
 
 			const { newFutharkContext } = await import('$lib/futhark');
-			vi.mocked(newFutharkContext).mockResolvedValue(oomCtx);
+			vi.mocked(newFutharkContext).mockResolvedValue(asMockFutharkContext(oomCtx));
 
 			const dispatcher = createComputeDispatcher();
 			await dispatcher.initialize();
@@ -1222,7 +1226,7 @@ describe('ComputeDispatcher', () => {
 
 			const mockWasmCtx = createMockFutharkWasmContext();
 			const { newFutharkContext } = await import('$lib/futhark');
-			vi.mocked(newFutharkContext).mockResolvedValue(mockWasmCtx);
+			vi.mocked(newFutharkContext).mockResolvedValue(asMockFutharkContext(mockWasmCtx));
 
 			const dispatcher = createComputeDispatcher();
 			await dispatcher.initialize();

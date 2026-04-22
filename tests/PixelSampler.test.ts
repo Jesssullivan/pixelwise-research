@@ -148,7 +148,7 @@ HTMLCanvasElement.prototype.getContext = function (contextId: string, options?: 
 	if (contextId === 'webgl2') {
 		return new MockWebGL2RenderingContext(this) as any;
 	}
-	return originalGetContext.call(this, contextId, options);
+	return (originalGetContext as any).call(this, contextId, options);
 };
 
 describe('CanvasSampler', () => {
@@ -460,6 +460,9 @@ describe('createSamplerFromSource', () => {
 
 		const result = createSamplerFromSource(canvas);
 		expect(result.success).toBe(true);
+		if (!result.success) {
+			throw result.error;
+		}
 		expect(result.data).toBeInstanceOf(CanvasSampler);
 	});
 
@@ -467,6 +470,9 @@ describe('createSamplerFromSource', () => {
 		const video = document.createElement('video');
 		const result = createSamplerFromSource(video);
 		expect(result.success).toBe(true);
+		if (!result.success) {
+			throw result.error;
+		}
 		expect(result.data).toBeInstanceOf(VideoSampler);
 	});
 
@@ -477,6 +483,9 @@ describe('createSamplerFromSource', () => {
 		if (gl) {
 			const result = createSamplerFromSource(gl);
 			expect(result.success).toBe(true);
+			if (!result.success) {
+				throw result.error;
+			}
 			expect(result.data).toBeInstanceOf(WebGLSampler);
 		}
 	});

@@ -69,7 +69,9 @@ test.describe('ESDT Shader Integration', () => {
 			const moduleInfo = await page.evaluate(async () => {
 				try {
 					// Try to load Futhark module
-					const { newFutharkContext } = await import('/src/lib/futhark/index.ts');
+						const { newFutharkContext } = await import(
+							/* @vite-ignore */ new URL('/src/lib/futhark/index.ts', window.location.origin).href
+						);
 					const ctx = await newFutharkContext();
 
 					return {

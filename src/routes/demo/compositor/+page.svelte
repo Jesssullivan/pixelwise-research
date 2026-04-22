@@ -7,7 +7,7 @@
 	import type { WCAGLevel } from '$lib/stores/pixelwiseStore.svelte';
 
 	// The new clean Futhark-based enhancer
-	let enhancer: ReturnType<typeof useContrastEnhancer> | null = $state(null);
+	let enhancer = $state<ReturnType<typeof useContrastEnhancer> | null>(null);
 
 	// UI State
 	let enhancerEnabled = $state(false);

@@ -71,10 +71,12 @@ test('should expose a real WebGPU adapter on the GPU runner lane', async ({ page
 			bodyHtmlSample: shellState.bodyHtmlSample || null
 		};
 
-		appCapabilities = await page.evaluate(async () => {
-			const featureDetection = await import('/src/lib/pixelwise/featureDetection.ts');
-			featureDetection.clearCapabilitiesCache();
-			const caps = await featureDetection.getCapabilitiesAsync();
+			appCapabilities = await page.evaluate(async () => {
+				const featureDetection = await import(
+					/* @vite-ignore */ new URL('/src/lib/pixelwise/featureDetection.ts', window.location.origin).href
+				);
+				featureDetection.clearCapabilitiesCache();
+				const caps = await featureDetection.getCapabilitiesAsync();
 
 			return {
 				webgpu: caps.webgpu,

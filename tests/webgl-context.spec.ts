@@ -66,7 +66,7 @@ test.describe('Real Browser WebGL', () => {
         }
       `;
 
-      const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+	      const vertexShader = gl.createShader(gl.VERTEX_SHADER)!;
       gl.shaderSource(vertexShader, vertexShaderSource);
       gl.compileShader(vertexShader);
 
@@ -74,7 +74,7 @@ test.describe('Real Browser WebGL', () => {
         shaderErrors.push(gl.getShaderInfoLog(vertexShader) || 'Unknown vertex shader error');
       }
 
-      const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+	      const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!;
       gl.shaderSource(fragmentShader, fragmentShaderSource);
       gl.compileShader(fragmentShader);
 
@@ -82,7 +82,7 @@ test.describe('Real Browser WebGL', () => {
         shaderErrors.push(gl.getShaderInfoLog(fragmentShader) || 'Unknown fragment shader error');
       }
 
-      const program = gl.createProgram();
+	      const program = gl.createProgram()!;
       gl.attachShader(program, vertexShader);
       gl.attachShader(program, fragmentShader);
       gl.linkProgram(program);

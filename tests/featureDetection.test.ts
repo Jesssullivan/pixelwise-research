@@ -66,13 +66,13 @@ describe('Feature Detection', () => {
 
 		it('should handle errors gracefully', () => {
 			const originalWasm = globalThis.WebAssembly;
-			globalThis.WebAssembly = {
-				Module: class {
-					constructor() {
-						throw new Error('WASM not supported');
+				globalThis.WebAssembly = {
+					Module: class {
+						constructor() {
+							throw new Error('WASM not supported');
+						}
 					}
-				}
-			} as typeof WebAssembly;
+				} as unknown as typeof WebAssembly;
 
 			const result = detectWASM();
 			expect(result).toBe(false);
@@ -92,16 +92,16 @@ describe('Feature Detection', () => {
 			const originalModule = WebAssembly.Module;
 
 			// Mock WebAssembly.Module to throw on SIMD bytecode
-			WebAssembly.Module = class {
-				constructor(bytes: BufferSource) {
-					const arr = new Uint8Array(bytes as ArrayBuffer);
-					// Check for SIMD opcode prefix (0xfd)
-					if (arr.some((b, i) => b === 0xfd && arr[i + 1] === 0x0c)) {
-						throw new Error('SIMD not supported');
+				WebAssembly.Module = class extends originalModule {
+					constructor(bytes: BufferSource) {
+						const arr = new Uint8Array(bytes as ArrayBuffer);
+						// Check for SIMD opcode prefix (0xfd)
+						if (arr.some((b, i) => b === 0xfd && arr[i + 1] === 0x0c)) {
+							throw new Error('SIMD not supported');
+						}
+						super(bytes);
 					}
-					return originalModule.call(WebAssembly, bytes);
-				}
-			} as typeof WebAssembly.Module;
+				} as typeof WebAssembly.Module;
 
 			const result = detectWASMSimd();
 			expect(result).toBe(false);

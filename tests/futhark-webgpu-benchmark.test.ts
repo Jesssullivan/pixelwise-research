@@ -260,7 +260,7 @@ describe('Futhark WebGPU Performance Benchmarks', () => {
 			for (let i = 0; i < 5; i++) {
 				const newDispatcher = createComputeDispatcher();
 				const start = performance.now();
-				await newDispatcher.initialize('webgpu');
+				await newDispatcher.initialize('futhark-webgpu');
 				const end = performance.now();
 				initTimes.push(end - start);
 				newDispatcher.destroy();
