@@ -190,18 +190,19 @@ export class ColorNormalizer {
 		// This is critical: getComputedStyle() returns oklch() on modern browsers,
 		// but Canvas fillStyle silently ignores it and stays at #000000
 		const lowerInput = normalizedInput.toLowerCase();
-		if (lowerInput.startsWith('oklch(')) {
-			const parsed = parseOklch(normalizedInput);
-			if (parsed) {
-				const rgb = oklchToRgb(parsed.l, parsed.c, parsed.h);
-				const result: NormalizedColor = {
-					rgb,
-					original: normalizedInput,
-					hex: this.rgbToHex(rgb),
-					hasAlpha: parsed.alpha < 1,
-					alpha: parsed.alpha,
-					cached: false
-				};
+			if (lowerInput.startsWith('oklch(')) {
+				const parsed = parseOklch(normalizedInput);
+				if (parsed) {
+					const rgb = oklchToRgb(parsed.l, parsed.c, parsed.h);
+					const alpha = parsed.alpha ?? 1;
+					const result: NormalizedColor = {
+						rgb,
+						original: normalizedInput,
+						hex: this.rgbToHex(rgb),
+						hasAlpha: alpha < 1,
+						alpha,
+						cached: false
+					};
 				this.cacheResult(normalizedInput, result);
 				if (this.config.debug) {
 					console.log(`[ColorNormalizer] OKLCH: ${color} → RGB(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`);

@@ -123,11 +123,10 @@ export async function detectWebGPU(): Promise<{ available: boolean; adapter: str
 		let adapterInfo = 'Unknown Adapter';
 		let info: GPUAdapterInfo | null = null;
 
-		interface ExtendedGPUAdapter extends GPUAdapter {
-			requestAdapterInfo?: () => Promise<GPUAdapterInfo>;
-			isFallbackAdapter?: boolean;
-			info?: GPUAdapterInfo;
-		}
+			type ExtendedGPUAdapter = GPUAdapter & {
+				requestAdapterInfo?: () => Promise<GPUAdapterInfo>;
+				isFallbackAdapter?: boolean;
+			};
 		const extendedAdapter = adapter as ExtendedGPUAdapter;
 
 		// Reject fallback/software adapters — Futhark requires a real GPU
