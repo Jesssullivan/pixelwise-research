@@ -1,0 +1,119 @@
+name: WebGPU Canary
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - codex/**
+
+concurrency:
+  group: webgpu-canary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  webgpu-canary:
+    name: Verify WebGPU canary on pixelwise-nix-gpu
+    runs-on: pixelwise-nix-gpu
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Ensure authenticated GitHub flake access
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo 'NIX_CONFIG<<EOF'
+            if [ -n "${NIX_CONFIG:-}" ]; then
+              printf '%s\n' "$NIX_CONFIG"
+            fi
+            echo 'experimental-features = nix-command flakes'
+            echo 'accept-flake-config = true'
+            echo "access-tokens = github.com=${GITHUB_TOKEN}"
+            echo 'EOF'
+          } >> "$GITHUB_ENV"
+
+      - name: Verify shared GPU runner environment
+        run: |
+          echo "Runner: ${{ runner.name }}"
+          echo "OS: ${{ runner.os }}"
+          uname -a
+          ls -ld /dev/dri /dev/dri/*
+
+      - name: Verify Nix bootstrap
+        run: |
+          command -v nix
+          nix --version
+
+      - name: Verify GPU device contract
+        run: |
+          test -d /dev/dri
+          test -c /dev/dri/card0
+          test -c /dev/dri/renderD128
+
+      - name: Verify Vulkan userspace path
+        run: |
+          nix shell nixpkgs#vulkan-tools nixpkgs#mesa -c bash -lc '
+            set -euo pipefail
+            MESA="$(nix build --no-link --print-out-paths nixpkgs#mesa)"
+            export VK_ICD_FILENAMES="$MESA/share/vulkan/icd.d/radeon_icd.x86_64.json"
+            export LIBGL_DRIVERS_PATH="$MESA/lib/dri"
+            export LD_LIBRARY_PATH="$MESA/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            SUMMARY="$(mktemp)"
+            trap "rm -f \"$SUMMARY\"" EXIT
+            vulkaninfo --summary >"$SUMMARY"
+            echo "### pixelwise WebGPU canary Vulkan summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "```text" >> "$GITHUB_STEP_SUMMARY"
+            grep -E "deviceName|deviceType|driverName|driverInfo|apiVersion" "$SUMMARY" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "```" >> "$GITHUB_STEP_SUMMARY"
+            grep -q "PHYSICAL_DEVICE_TYPE_DISCRETE_GPU" "$SUMMARY"
+          '
+
+      - name: Install dependencies
+        run: |
+          nix shell nixpkgs#nodejs_22 nixpkgs#pnpm --command bash -lc '
+            set -euo pipefail
+            pnpm install --frozen-lockfile
+          '
+
+      - name: Run WebGPU canary
+        run: |
+          nix shell nixpkgs#nodejs_22 nixpkgs#pnpm nixpkgs#chromium nixpkgs#mesa nixpkgs#vulkan-loader --command bash -lc '
+            set -euo pipefail
+            MESA="$(nix build --no-link --print-out-paths nixpkgs#mesa)"
+            VULKAN_LOADER="$(nix build --no-link --print-out-paths nixpkgs#vulkan-loader)"
+            CHROMIUM_BIN="$(command -v chromium || command -v chromium-browser)"
+            test -n "$CHROMIUM_BIN"
+            export VK_ICD_FILENAMES="$MESA/share/vulkan/icd.d/radeon_icd.x86_64.json"
+            export LIBGL_DRIVERS_PATH="$MESA/lib/dri"
+            export LD_LIBRARY_PATH="$VULKAN_LOADER/lib:$MESA/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$CHROMIUM_BIN"
+            pnpm run test:webgpu:canary
+          '
+
+      - name: Publish WebGPU step summary
+        if: always()
+        run: |
+          if [ -f test-results/webgpu-summary.json ]; then
+            echo "### pixelwise WebGPU canary summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat test-results/webgpu-summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webgpu-canary-artifacts
+          path: |
+            playwright-report-webgpu/
+            test-results/
+          retention-days: 7
